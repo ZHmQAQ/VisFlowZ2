@@ -110,7 +110,8 @@ app.include_router(api_router)
 app.mount("/data", StaticFiles(directory=str(settings.DATA_DIR)), name="data")
 
 # -- SPA frontend serving --
-_FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+logger.info(f"Frontend dist path: {_FRONTEND_DIR} (exists={_FRONTEND_DIR.is_dir()})")
 if _FRONTEND_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIR / "assets")), name="frontend-assets")
 
