@@ -1,8 +1,8 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2>Camera Management</h2>
-      <el-button type="primary" :icon="Plus" @click="showAdd = true">Add Camera</el-button>
+      <h2>相机管理</h2>
+      <el-button type="primary" :icon="Plus" @click="showAdd = true">添加相机</el-button>
     </div>
 
     <div class="camera-layout">
@@ -17,17 +17,17 @@
             <el-tag size="small" effect="plain">{{ cam.camera_type || cam.type }}</el-tag>
           </div>
           <div class="cam-actions">
-            <el-button v-if="!cam.is_open" size="small" type="success" @click="doOpen(cam.camera_id)">Open</el-button>
-            <el-button v-else size="small" type="warning" @click="doClose(cam.camera_id)">Close</el-button>
+            <el-button v-if="!cam.is_open" size="small" type="success" @click="doOpen(cam.camera_id)">打开</el-button>
+            <el-button v-else size="small" type="warning" @click="doClose(cam.camera_id)">关闭</el-button>
             <el-button size="small" type="primary" :disabled="!cam.is_open" @click="doCapture(cam.camera_id)">
-              Capture
+              拍照
             </el-button>
             <el-button size="small" type="danger" text @click="doRemove(cam.camera_id)">
               <el-icon><Delete /></el-icon>
             </el-button>
           </div>
         </el-card>
-        <el-empty v-if="cameras.length === 0" description="No cameras" />
+        <el-empty v-if="cameras.length === 0" description="暂无相机" />
       </div>
 
       <!-- Right: live view -->
@@ -35,9 +35,9 @@
         <el-card>
           <template #header>
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span>{{ selectedId || 'Select a camera' }}</span>
+              <span>{{ selectedId || '请选择相机' }}</span>
               <div v-if="selectedId">
-                <el-switch v-model="autoCapture" active-text="Auto" inactive-text="" @change="toggleAuto" style="margin-right:8px" />
+                <el-switch v-model="autoCapture" active-text="自动" inactive-text="" @change="toggleAuto" style="margin-right:8px" />
                 <el-select v-model="autoInterval" size="small" style="width:90px" :disabled="!autoCapture">
                   <el-option :value="200" label="200ms" />
                   <el-option :value="500" label="500ms" />
@@ -49,7 +49,7 @@
           </template>
           <div class="frame-container">
             <img v-if="frameUrl" :src="frameUrl" class="frame-img" @error="frameUrl = ''" />
-            <el-empty v-else description="No frame" style="padding:60px 0" />
+            <el-empty v-else description="暂无画面" style="padding:60px 0" />
           </div>
           <div v-if="frameInfo" class="frame-meta">
             {{ frameInfo.shape ? `${frameInfo.shape[1]}x${frameInfo.shape[0]}` : '' }}
@@ -60,32 +60,32 @@
     </div>
 
     <!-- Add dialog -->
-    <el-dialog v-model="showAdd" title="Add Camera" width="460">
+    <el-dialog v-model="showAdd" title="添加相机" width="460">
       <el-form :model="form" label-width="90px">
-        <el-form-item label="Camera ID">
-          <el-input v-model="form.camera_id" placeholder="e.g. cam1" />
+        <el-form-item label="相机 ID">
+          <el-input v-model="form.camera_id" placeholder="如: cam1" />
         </el-form-item>
-        <el-form-item label="Type">
+        <el-form-item label="类型">
           <el-select v-model="form.camera_type" style="width:100%">
-            <el-option label="USB Camera" value="usb" />
-            <el-option label="RTSP Stream" value="rtsp" />
-            <el-option label="Daheng (GigE)" value="daheng" />
-            <el-option label="Hikvision" value="hikvision" />
+            <el-option label="USB 相机" value="usb" />
+            <el-option label="RTSP 网络流" value="rtsp" />
+            <el-option label="大恒 (GigE)" value="daheng" />
+            <el-option label="海康威视" value="hikvision" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Device #" v-if="form.camera_type === 'usb'">
+        <el-form-item label="设备编号" v-if="form.camera_type === 'usb'">
           <el-input-number v-model="form.config.device_index" :min="0" />
         </el-form-item>
-        <el-form-item label="RTSP URL" v-if="form.camera_type === 'rtsp'">
+        <el-form-item label="RTSP 地址" v-if="form.camera_type === 'rtsp'">
           <el-input v-model="form.config.url" placeholder="rtsp://..." />
         </el-form-item>
-        <el-form-item label="SN / IP" v-if="form.camera_type === 'daheng' || form.camera_type === 'hikvision'">
-          <el-input v-model="form.config.serial_number" placeholder="Serial number or IP (optional)" />
+        <el-form-item label="序列号/IP" v-if="form.camera_type === 'daheng' || form.camera_type === 'hikvision'">
+          <el-input v-model="form.config.serial_number" placeholder="序列号或IP地址" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showAdd = false">Cancel</el-button>
-        <el-button type="primary" :loading="loading" @click="doAdd">Add</el-button>
+        <el-button @click="showAdd = false">取消</el-button>
+        <el-button type="primary" :loading="loading" @click="doAdd">添加</el-button>
       </template>
     </el-dialog>
   </div>
@@ -129,7 +129,7 @@ async function doAdd() {
   loading.value = true
   try {
     await addCamera(form.value)
-    ElMessage.success(`Camera [${form.value.camera_id}] added`)
+    ElMessage.success(`相机 [${form.value.camera_id}] 已添加`)
     showAdd.value = false
     form.value = { camera_id: '', camera_type: 'usb', config: { device_index: 0, url: '', serial_number: '' } }
     refresh()
@@ -137,7 +137,7 @@ async function doAdd() {
 }
 
 async function doRemove(id) {
-  await ElMessageBox.confirm(`Remove camera [${id}]?`, 'Confirm', { type: 'warning' })
+  await ElMessageBox.confirm(`确认移除相机 [${id}]？`, '确认', { type: 'warning' })
   await removeCamera(id)
   if (selectedId.value === id) { selectedId.value = ''; frameUrl.value = '' }
   refresh()
@@ -146,7 +146,7 @@ async function doRemove(id) {
 async function doOpen(id) {
   try {
     await openCamera(id)
-    ElMessage.success(`Camera [${id}] opened`)
+    ElMessage.success(`相机 [${id}] 已打开`)
     refresh()
   } catch {}
 }

@@ -49,6 +49,7 @@
           >
             <el-button :icon="Upload">加载预设</el-button>
           </el-upload>
+          <span style="font-size:12px;color:#8892b0;">上传 .json 预设文件，一键配置 PLC连接 + I/O映射 + 检测通道</span>
         </div>
       </el-card>
 
