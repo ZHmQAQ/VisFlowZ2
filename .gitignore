@@ -35,8 +35,9 @@ backend/data/
 .env
 .env.local
 
-# Python packaging
-*.spec
+# PyInstaller temp
+backend/build/
+backend/dist/
 
 # Cache
 .pytest_cache/
