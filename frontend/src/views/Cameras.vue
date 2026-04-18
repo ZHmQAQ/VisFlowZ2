@@ -11,15 +11,15 @@
         <el-card v-for="cam in cameras" :key="cam.camera_id" class="cam-card" :class="{ active: cam.camera_id === selectedId }">
           <div class="cam-header" @click="selectedId = cam.camera_id">
             <div>
-              <span class="status-dot" :class="cam.status === 'open' ? 'online' : 'offline'" />
+              <span class="status-dot" :class="cam.is_open ? 'online' : 'offline'" />
               <b>{{ cam.camera_id }}</b>
             </div>
             <el-tag size="small" effect="plain">{{ cam.camera_type || cam.type }}</el-tag>
           </div>
           <div class="cam-actions">
-            <el-button v-if="cam.status !== 'open'" size="small" type="success" @click="doOpen(cam.camera_id)">Open</el-button>
+            <el-button v-if="!cam.is_open" size="small" type="success" @click="doOpen(cam.camera_id)">Open</el-button>
             <el-button v-else size="small" type="warning" @click="doClose(cam.camera_id)">Close</el-button>
-            <el-button size="small" type="primary" :disabled="cam.status !== 'open'" @click="doCapture(cam.camera_id)">
+            <el-button size="small" type="primary" :disabled="!cam.is_open" @click="doCapture(cam.camera_id)">
               Capture
             </el-button>
             <el-button size="small" type="danger" text @click="doRemove(cam.camera_id)">
@@ -80,7 +80,7 @@
           <el-input v-model="form.config.url" placeholder="rtsp://..." />
         </el-form-item>
         <el-form-item label="SN / IP" v-if="form.camera_type === 'daheng' || form.camera_type === 'hikvision'">
-          <el-input v-model="form.config.sn" placeholder="Serial number or IP (optional)" />
+          <el-input v-model="form.config.serial_number" placeholder="Serial number or IP (optional)" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -131,7 +131,7 @@ async function doAdd() {
     await addCamera(form.value)
     ElMessage.success(`Camera [${form.value.camera_id}] added`)
     showAdd.value = false
-    form.value = { camera_id: '', camera_type: 'usb', config: { device_index: 0, url: '', sn: '' } }
+    form.value = { camera_id: '', camera_type: 'usb', config: { device_index: 0, url: '', serial_number: '' } }
     refresh()
   } finally { loading.value = false }
 }

@@ -1,17 +1,21 @@
 """
 Multi-frame register-polling inspection program block
 
-Workflow per camera channel:
-  1. Poll command register (ED, mapped from PLC e.g. D30)
-  2. Value 1/2/3 -> capture frame 1/2/3
-  3. Write status to result register (EW, mapped to PLC e.g. D31):
-     11=frame1 done, 12=frame2 done, 13=frame3 done
-  4. After all frames captured -> run inference on each
-  5. Determine worst strategy code -> write to strategy register (EW)
-  6. Reset command register to 0
+Workflow per camera channel (handshake with PLC):
+  1. PLC writes command register (D30) = 1/2/3 to request frame capture
+  2. VModule detects NEW command (change from previous value)
+  3. VModule captures frame, writes status register (D31) = 11/12/13
+  4. PLC sees status, clears command register (D30=0), then writes next command
+  5. After all frames collected -> VModule runs inference on all frames
+  6. VModule writes strategy result, defect count, inference time
+  7. VModule writes status = 0 (idle), ready for next round
+
+IMPORTANT: cmd_addr is ED (input, PLC->VModule), VModule must NOT write to it.
+The handshake relies on status_addr (EW, output) to signal back to PLC.
+VModule tracks _last_cmd internally to detect command changes.
 
 Register convention per channel:
-  cmd_addr   (ED)  - PLC writes 1/2/3 to trigger frame capture, VModule resets to 0
+  cmd_addr   (ED)  - PLC writes 1/2/3 to trigger frame capture (read-only for VModule)
   status_addr(EW)  - VModule writes 11/12/13 for frame status, 20=inferring, 0=idle
   result_addr(EW)  - strategy code: 0=idle, 1=OK, 2=repairable, 3=unrepairable
   count_addr (EW)  - total defect count across all frames
@@ -41,15 +45,16 @@ class MultiFrameChannel:
     frame_count: int = 3
 
     # Register addresses (word devices)
-    cmd_addr: str = "ED0"        # command: 1/2/3 = capture frame N
+    cmd_addr: str = "ED0"        # command: 1/2/3 = capture frame N (PLC writes, VModule reads)
     status_addr: str = "EW0"     # status: 11/12/13=frameN done, 20=inferring, 0=idle
     result_addr: str = "EW1"     # strategy: 1=OK, 2=repairable, 3=unrepairable
     count_addr: str = "EW2"      # total defect count
     time_addr: str = "EW3"       # total inference time ms
 
-    # Internal runtime state
+    # Internal runtime state (not serialized)
     _frames: Dict[int, np.ndarray] = field(default_factory=dict, repr=False)
     _busy: bool = field(default=False, repr=False)
+    _last_cmd: int = field(default=0, repr=False)  # last processed command value
 
 
 class MultiFrameProgramBlock:
@@ -57,8 +62,12 @@ class MultiFrameProgramBlock:
 
     Each scan cycle:
       - Read cmd register for each channel
-      - If cmd=1/2/3 and not busy -> capture that frame, write status, reset cmd
+      - If cmd changed and cmd=1/2/3 and not busy -> capture that frame, write status
       - If all frames collected -> launch async inference
+      - PLC is responsible for clearing cmd register after seeing status update
+
+    Handshake protocol:
+      PLC: D30=1 -> VModule captures -> D31=11 -> PLC: D30=0 -> PLC: D30=2 -> ...
     """
 
     def __init__(self, camera_manager=None, inference_manager=None):
@@ -87,17 +96,22 @@ class MultiFrameProgramBlock:
         if ch._busy:
             return
 
-        # Read command register
+        # Read command register (ED = input from PLC, read-only for us)
         cmd_val = memory.read_word(SoftDeviceAddress.parse(ch.cmd_addr))
+
+        # Track command changes: only process when cmd changes to a new non-zero value
+        if cmd_val == ch._last_cmd:
+            return  # no change, skip
+        ch._last_cmd = cmd_val
+
         if cmd_val == 0:
+            # PLC cleared the command (acknowledged our status), nothing to do
             return
         if cmd_val < 1 or cmd_val > ch.frame_count:
+            logger.warning(f"[{ch.name}] Invalid command value: {cmd_val}")
             return
 
         frame_idx = cmd_val  # 1-based
-
-        # Reset command immediately (tell PLC we received it)
-        memory.write_word(SoftDeviceAddress.parse(ch.cmd_addr), 0)
 
         # Capture frame
         ch._busy = True
@@ -148,7 +162,7 @@ class MultiFrameProgramBlock:
             # Determine strategy code from detections
             strategy_code = self._evaluate_strategy(ch, all_detections)
 
-            # Write results
+            # Write results to output registers (EW)
             memory.write_word(SoftDeviceAddress.parse(ch.result_addr), strategy_code)
             memory.write_word(SoftDeviceAddress.parse(ch.count_addr), len(all_detections))
             memory.write_word(SoftDeviceAddress.parse(ch.time_addr), elapsed_ms)
@@ -164,6 +178,7 @@ class MultiFrameProgramBlock:
             memory.write_word(SoftDeviceAddress.parse(ch.status_addr), 99)  # error
         finally:
             ch._frames.clear()
+            ch._last_cmd = 0  # reset so next round can start fresh
             ch._busy = False
 
     def _evaluate_strategy(self, ch: MultiFrameChannel, detections: list) -> int:
