@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build outputs
+frontend/dist/
+*.egg-info/
+build/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data & Runtime
+backend/data/
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# Env
+.env
+.env.local
+
+# Python packaging
+*.spec
+
+# Cache
+.pytest_cache/
+.vite/
+frontend/.vite/

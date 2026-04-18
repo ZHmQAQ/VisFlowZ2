@@ -1,0 +1,39 @@
+{
+  "name": "分拣线（3路分拣）",
+  "description": "1个拍照工位 + 3个分拣执行器，根据缺陷类型分流到不同通道。PLC侧用D300存放分类码，VModule写入后PLC程序判定分拣。",
+  "plc_connections": [
+    {
+      "name": "PLC_MAIN",
+      "host": "192.168.1.10",
+      "port": 502,
+      "unit_id": 1,
+      "timeout": 1.0
+    }
+  ],
+  "io_mappings": [
+    {"plc_name": "PLC_MAIN", "plc_addr": "M100", "vmodule_addr": "EX0", "description": "光电传感器-工件到位"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "M200", "vmodule_addr": "EY0", "description": "检测完成"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "M201", "vmodule_addr": "EY1", "description": "OK/NG"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "D200", "vmodule_addr": "EW0", "description": "缺陷数量"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "D201", "vmodule_addr": "EW1", "description": "推理耗时ms"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "D300", "vmodule_addr": "EW10", "description": "分类码 0=OK 1=缺陷A 2=缺陷B 3=缺陷C"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "D301", "vmodule_addr": "EW11", "description": "最大缺陷置信度×1000"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "D100", "vmodule_addr": "ED0", "description": "PLC传入-产品型号码"},
+    {"plc_name": "PLC_MAIN", "plc_addr": "D101", "vmodule_addr": "ED1", "description": "PLC传入-批次号"}
+  ],
+  "detection_channels": [
+    {
+      "name": "分拣检测",
+      "trigger_addr": "EX0",
+      "busy_addr": "VM100",
+      "camera_id": "cam_line",
+      "model_id": "yolo_sorting",
+      "done_addr": "EY0",
+      "result_addr": "EY1",
+      "defect_count_addr": "EW0",
+      "inference_time_addr": "EW1",
+      "total_count_addr": "VD0",
+      "ng_count_addr": "VD1"
+    }
+  ]
+}

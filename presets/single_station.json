@@ -1,0 +1,60 @@
+{
+  "name": "单工位视觉检测",
+  "description": "最基本的配置：1台PLC + 1个相机 + 1个模型，适用于单工位OK/NG判定",
+  "plc_connections": [
+    {
+      "name": "PLC1",
+      "host": "192.168.1.10",
+      "port": 502,
+      "unit_id": 1,
+      "timeout": 1.0
+    }
+  ],
+  "io_mappings": [
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "M100",
+      "vmodule_addr": "EX0",
+      "description": "拍照触发信号（PLC→VModule）"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "M200",
+      "vmodule_addr": "EY0",
+      "description": "检测完成信号（VModule→PLC）"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "M201",
+      "vmodule_addr": "EY1",
+      "description": "OK/NG结果 1=OK 0=NG（VModule→PLC）"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D200",
+      "vmodule_addr": "EW0",
+      "description": "缺陷数量（VModule→PLC）"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D201",
+      "vmodule_addr": "EW1",
+      "description": "推理耗时ms（VModule→PLC）"
+    }
+  ],
+  "detection_channels": [
+    {
+      "name": "工位1",
+      "trigger_addr": "EX0",
+      "busy_addr": "VM100",
+      "camera_id": "cam1",
+      "model_id": "yolo_default",
+      "done_addr": "EY0",
+      "result_addr": "EY1",
+      "defect_count_addr": "EW0",
+      "inference_time_addr": "EW1",
+      "total_count_addr": "VD0",
+      "ng_count_addr": "VD1"
+    }
+  ]
+}

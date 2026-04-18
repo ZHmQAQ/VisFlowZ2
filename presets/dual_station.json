@@ -1,0 +1,53 @@
+{
+  "name": "双工位视觉检测",
+  "description": "2个独立检测工位，各自有触发信号和结果输出，共用1台PLC",
+  "plc_connections": [
+    {
+      "name": "PLC1",
+      "host": "192.168.1.10",
+      "port": 502,
+      "unit_id": 1,
+      "timeout": 1.0
+    }
+  ],
+  "io_mappings": [
+    {"plc_name": "PLC1", "plc_addr": "M100", "vmodule_addr": "EX0", "description": "工位1-拍照触发"},
+    {"plc_name": "PLC1", "plc_addr": "M101", "vmodule_addr": "EX1", "description": "工位2-拍照触发"},
+    {"plc_name": "PLC1", "plc_addr": "M200", "vmodule_addr": "EY0", "description": "工位1-检测完成"},
+    {"plc_name": "PLC1", "plc_addr": "M201", "vmodule_addr": "EY1", "description": "工位1-OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M202", "vmodule_addr": "EY2", "description": "工位2-检测完成"},
+    {"plc_name": "PLC1", "plc_addr": "M203", "vmodule_addr": "EY3", "description": "工位2-OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "D200", "vmodule_addr": "EW0", "description": "工位1-缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D201", "vmodule_addr": "EW1", "description": "工位1-耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D202", "vmodule_addr": "EW2", "description": "工位2-缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D203", "vmodule_addr": "EW3", "description": "工位2-耗时ms"}
+  ],
+  "detection_channels": [
+    {
+      "name": "工位1",
+      "trigger_addr": "EX0",
+      "busy_addr": "VM100",
+      "camera_id": "cam1",
+      "model_id": "yolo_default",
+      "done_addr": "EY0",
+      "result_addr": "EY1",
+      "defect_count_addr": "EW0",
+      "inference_time_addr": "EW1",
+      "total_count_addr": "VD0",
+      "ng_count_addr": "VD1"
+    },
+    {
+      "name": "工位2",
+      "trigger_addr": "EX1",
+      "busy_addr": "VM101",
+      "camera_id": "cam2",
+      "model_id": "yolo_default",
+      "done_addr": "EY2",
+      "result_addr": "EY3",
+      "defect_count_addr": "EW2",
+      "inference_time_addr": "EW3",
+      "total_count_addr": "VD2",
+      "ng_count_addr": "VD3"
+    }
+  ]
+}
