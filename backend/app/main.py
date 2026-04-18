@@ -1,8 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
@@ -105,3 +108,19 @@ app.include_router(api_router)
 
 # -- Static files from DATA_DIR --
 app.mount("/data", StaticFiles(directory=str(settings.DATA_DIR)), name="data")
+
+# -- SPA frontend serving --
+_FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
+if _FRONTEND_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIR / "assets")), name="frontend-assets")
+
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(_FRONTEND_DIR / "index.html")
+
+    @app.get("/{path:path}")
+    async def spa_fallback(request: Request, path: str):
+        file = _FRONTEND_DIR / path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(_FRONTEND_DIR / "index.html")
