@@ -22,6 +22,20 @@ body {
   background: $bg-dark;
   color: $text-primary;
   overflow: hidden;
+
+  // Element Plus 深色主题全局变量
+  --el-fill-color: rgba(255, 255, 255, 0.06);
+  --el-fill-color-light: rgba(255, 255, 255, 0.05);
+  --el-fill-color-lighter: rgba(255, 255, 255, 0.04);
+  --el-fill-color-blank: transparent;
+  --el-bg-color: #{$bg-card};
+  --el-bg-color-overlay: #{$bg-card};
+  --el-text-color-primary: #{$text-primary};
+  --el-text-color-regular: #{$text-primary};
+  --el-text-color-secondary: #{$text-secondary};
+  --el-border-color: #{$border-color};
+  --el-border-color-light: #{$border-color};
+  --el-border-color-lighter: #{$border-color};
 }
 
 // Element Plus 深色覆盖

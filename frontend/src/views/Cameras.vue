@@ -2,7 +2,7 @@
   <div class="page-container">
     <div class="page-header">
       <h2>相机管理</h2>
-      <el-button type="primary" :icon="Plus" @click="showAdd = true">添加相机</el-button>
+      <el-button type="primary" :icon="Plus" @click="openAddDialog">添加相机</el-button>
     </div>
 
     <div class="camera-layout">
@@ -15,6 +15,13 @@
               <b>{{ cam.camera_id }}</b>
             </div>
             <el-tag size="small" effect="plain">{{ cam.camera_type || cam.type }}</el-tag>
+          </div>
+          <div class="cam-params">
+            <span>曝光: {{ cam.exposure }}μs</span>
+            <span>增益: {{ cam.gain }}</span>
+          </div>
+          <div v-if="cam.physical_key" class="cam-physical">
+            <el-tag size="small" type="info" effect="plain">{{ cam.physical_key }}</el-tag>
           </div>
           <div class="cam-actions">
             <el-button v-if="!cam.is_open" size="small" type="success" @click="doOpen(cam.camera_id)">打开</el-button>
@@ -60,10 +67,10 @@
     </div>
 
     <!-- Add dialog -->
-    <el-dialog v-model="showAdd" title="添加相机" width="460">
-      <el-form :model="form" label-width="90px">
+    <el-dialog v-model="showAdd" title="添加相机" width="500" :close-on-click-modal="false">
+      <el-form :model="form" label-width="100px">
         <el-form-item label="相机 ID">
-          <el-input v-model="form.camera_id" placeholder="如: cam1" />
+          <el-input v-model="form.camera_id" placeholder="如: cam1-exp1" />
         </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="form.camera_type" style="width:100%">
@@ -75,12 +82,26 @@
         </el-form-item>
         <el-form-item label="设备编号" v-if="form.camera_type === 'usb'">
           <el-input-number v-model="form.config.device_index" :min="0" />
+          <div class="form-hint">相同编号 = 同一物理相机，可创建多个虚拟相机</div>
         </el-form-item>
         <el-form-item label="RTSP 地址" v-if="form.camera_type === 'rtsp'">
           <el-input v-model="form.config.url" placeholder="rtsp://..." />
         </el-form-item>
         <el-form-item label="序列号/IP" v-if="form.camera_type === 'daheng' || form.camera_type === 'hikvision'">
           <el-input v-model="form.config.serial_number" placeholder="序列号或IP地址" />
+          <div class="form-hint">相同序列号 = 同一物理相机，可创建多个虚拟相机</div>
+        </el-form-item>
+
+        <el-divider content-position="left">拍照参数</el-divider>
+        <div class="form-hint" style="margin-bottom:12px">
+          每个虚拟相机有独立的拍照参数，触发时自动切换到对应参数再拍照
+        </div>
+        <el-form-item label="曝光时间">
+          <el-input-number v-model="form.exposure" :min="1" :max="1000000" :step="1000" controls-position="right" style="width:200px" />
+          <span style="margin-left:8px;color:#8892b0;font-size:12px">μs (微秒)</span>
+        </el-form-item>
+        <el-form-item label="增益">
+          <el-input-number v-model="form.gain" :min="0" :max="30" :step="0.1" :precision="1" controls-position="right" style="width:200px" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -111,10 +132,17 @@ const autoInterval = ref(500)
 let _timer = null
 let _frameCounter = 0
 
-const form = ref({
+const defaultForm = () => ({
   camera_id: '', camera_type: 'usb',
-  config: { device_index: 0, url: '', sn: '' },
+  config: { device_index: 0, url: '', serial_number: '' },
+  exposure: 10000, gain: 1.0,
 })
+const form = ref(defaultForm())
+
+function openAddDialog() {
+  form.value = defaultForm()
+  showAdd.value = true
+}
 
 async function refresh() {
   try {
@@ -131,7 +159,6 @@ async function doAdd() {
     await addCamera(form.value)
     ElMessage.success(`相机 [${form.value.camera_id}] 已添加`)
     showAdd.value = false
-    form.value = { camera_id: '', camera_type: 'usb', config: { device_index: 0, url: '', serial_number: '' } }
     refresh()
   } finally { loading.value = false }
 }
@@ -215,7 +242,19 @@ onUnmounted(() => { if (_timer) clearInterval(_timer) })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.cam-params {
+  font-size: 12px;
+  color: #8892b0;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.cam-physical {
+  margin-bottom: 6px;
 }
 
 .cam-actions {
@@ -249,5 +288,12 @@ onUnmounted(() => { if (_timer) clearInterval(_timer) })
   color: #8892b0;
   font-size: 12px;
   margin-top: 8px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #8892b0;
+  margin-top: 4px;
+  line-height: 1.6;
 }
 </style>

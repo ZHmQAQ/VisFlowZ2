@@ -362,7 +362,7 @@ class ScanEngine:
         """Get connected camera count from camera manager."""
         try:
             from app.core.camera.manager import camera_manager
-            return len([c for c in camera_manager.get_all_cameras().values()
-                        if c.is_open])
+            return len([info for info in camera_manager.get_all_info()
+                        if info and info.get('is_open')])
         except Exception:
             return 0

@@ -27,6 +27,8 @@ class CameraAddRequest(BaseModel):
     camera_id: str
     camera_type: str = Field(default="usb", description="usb / rtsp / daheng / hikvision")
     config: dict = Field(default_factory=dict)
+    exposure: int = Field(default=10000, description="曝光时间(微秒)")
+    gain: float = Field(default=1.0, description="增益")
 
 
 class CameraConfigUpdate(BaseModel):
@@ -43,7 +45,8 @@ async def list_types():
 
 @router.post("/add", summary="Add camera")
 async def add_camera(req: CameraAddRequest):
-    ok = await camera_manager.add_camera(req.camera_id, req.camera_type, req.config)
+    config = {**req.config, "exposure": req.exposure, "gain": req.gain}
+    ok = await camera_manager.add_camera(req.camera_id, req.camera_type, config)
     if not ok:
         raise HTTPException(400, f"Failed to add camera [{req.camera_id}]")
     return {"ok": True, "camera_id": req.camera_id}
@@ -137,13 +140,13 @@ async def get_frame_base64(camera_id: str):
 
 @router.post("/{camera_id}/config", summary="Update camera config")
 async def update_config(camera_id: str, req: CameraConfigUpdate):
-    cam = camera_manager.get_camera(camera_id)
-    if not cam:
+    vcam = camera_manager.get_virtual_camera(camera_id)
+    if not vcam:
         raise HTTPException(404, f"Camera [{camera_id}] not found")
     if req.exposure is not None:
-        await cam.set_exposure(req.exposure)
+        vcam.exposure = req.exposure
     if req.gain is not None:
-        await cam.set_gain(req.gain)
+        vcam.gain = req.gain
     return {"ok": True}
 
 
