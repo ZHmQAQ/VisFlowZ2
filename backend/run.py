@@ -20,4 +20,5 @@ if __name__ == "__main__":
             host=settings.HOST,
             port=settings.PORT,
             reload=settings.DEBUG,
+            reload_dirs=["app"] if settings.DEBUG else None,
         )
