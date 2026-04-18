@@ -96,6 +96,8 @@ async def list_plc():
             "connected": client.connected,
             "host": client.config.host,
             "port": client.config.port,
+            "unit_id": client.config.unit_id,
+            "timeout": client.config.timeout,
         }
         for name, client in engine._plc_clients.items()
     }
@@ -109,6 +111,48 @@ async def remove_plc(name: str):
         raise HTTPException(404, f"PLC [{name}] 不存在")
     await client.disconnect()
     return {"ok": True, "message": f"PLC [{name}] 已移除"}
+
+
+@router.post("/connections/{name}/connect", summary="手动连接 PLC")
+async def connect_plc(name: str):
+    engine = _get_engine()
+    client = engine._plc_clients.get(name)
+    if client is None:
+        raise HTTPException(404, f"PLC [{name}] 不存在")
+    try:
+        await client.connect()
+        return {"ok": True, "message": f"PLC [{name}] 已连接"}
+    except Exception as e:
+        raise HTTPException(500, f"连接失败: {e}")
+
+
+@router.post("/connections/{name}/disconnect", summary="手动断开 PLC")
+async def disconnect_plc(name: str):
+    engine = _get_engine()
+    client = engine._plc_clients.get(name)
+    if client is None:
+        raise HTTPException(404, f"PLC [{name}] 不存在")
+    await client.disconnect()
+    return {"ok": True, "message": f"PLC [{name}] 已断开"}
+
+
+@router.put("/connections/{name}", summary="编辑 PLC 配置")
+async def update_plc(name: str, req: PLCConnectionCreate):
+    from app.core.plc.modbus_client import PLCConnection, ModbusTCPClient
+    engine = _get_engine()
+    client = engine._plc_clients.get(name)
+    if client is None:
+        raise HTTPException(404, f"PLC [{name}] 不存在")
+    await client.disconnect()
+    conn = PLCConnection(
+        name=name,
+        host=req.host,
+        port=req.port,
+        unit_id=req.unit_id,
+        timeout=req.timeout,
+    )
+    engine._plc_clients[name] = ModbusTCPClient(conn)
+    return {"ok": True, "message": f"PLC [{name}] 配置已更新"}
 
 
 # ==================== I/O 映射管理 ====================

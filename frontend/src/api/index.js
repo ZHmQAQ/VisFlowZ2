@@ -4,6 +4,9 @@ import request from './request'
 export const addPLC = (data) => request.post('/plc/connections', data)
 export const listPLC = () => request.get('/plc/connections')
 export const removePLC = (name) => request.delete(`/plc/connections/${name}`)
+export const connectPLC = (name) => request.post(`/plc/connections/${name}/connect`)
+export const disconnectPLC = (name) => request.post(`/plc/connections/${name}/disconnect`)
+export const updatePLC = (name, data) => request.put(`/plc/connections/${name}`, data)
 
 // ============ I/O Mappings ============
 export const addMapping = (data) => request.post('/plc/mappings', data)
@@ -26,10 +29,14 @@ export const stopEngine = () => request.post('/plc/engine/stop')
 // ============ Detection Channels ============
 export const addChannel = (data) => request.post('/detection/channels', data)
 export const listChannels = () => request.get('/detection/channels')
+export const updateChannel = (name, data) => request.put(`/detection/channels/${name}`, data)
+export const deleteChannel = (name) => request.delete(`/detection/channels/${name}`)
 
 // ============ Multi-frame Channels ============
 export const addMultiframeChannel = (data) => request.post('/detection/multiframe', data)
 export const listMultiframeChannels = () => request.get('/detection/multiframe')
+export const updateMultiframeChannel = (name, data) => request.put(`/detection/multiframe/${name}`, data)
+export const deleteMultiframeChannel = (name) => request.delete(`/detection/multiframe/${name}`)
 
 // ============ Camera ============
 export const listCameraTypes = () => request.get('/camera/types')

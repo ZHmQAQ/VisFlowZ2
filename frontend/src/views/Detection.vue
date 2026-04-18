@@ -11,9 +11,17 @@
         <template #header>
           <div class="channel-header">
             <span>{{ ch.name }}</span>
-            <el-tag :type="ch.busy ? 'warning' : 'info'" size="small" effect="dark">
-              {{ ch.busy ? '检测中' : '空闲' }}
-            </el-tag>
+            <div>
+              <el-tag :type="ch.busy ? 'warning' : 'info'" size="small" effect="dark" style="margin-right:8px">
+                {{ ch.busy ? '检测中' : '空闲' }}
+              </el-tag>
+              <el-button size="small" type="primary" text @click="openEdit(ch)">
+                <el-icon><Edit /></el-icon>
+              </el-button>
+              <el-button size="small" type="danger" text @click="doDelete(ch.name)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
           </div>
         </template>
         <div class="channel-info">
@@ -44,12 +52,12 @@
       <el-empty v-if="channels.length === 0" description="暂无检测通道" style="grid-column: span 3" />
     </div>
 
-    <!-- 添加对话框 -->
-    <el-dialog v-model="showAdd" title="添加检测通道" width="560" :close-on-click-modal="false">
+    <!-- 添加/编辑对话框 -->
+    <el-dialog v-model="showDialog" :title="isEdit ? '编辑检测通道' : '添加检测通道'" width="560" :close-on-click-modal="false">
       <el-form :model="form" label-width="120px">
         <el-divider content-position="left">基本信息</el-divider>
         <el-form-item label="通道名称">
-          <el-input v-model="form.name" placeholder="如: 工位1" />
+          <el-input v-model="form.name" placeholder="如: 工位1" :disabled="isEdit" />
         </el-form-item>
         <el-form-item label="相机">
           <el-select v-model="form.camera_id" style="width:100%"
@@ -130,8 +138,10 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showAdd = false">取消</el-button>
-        <el-button type="primary" :loading="loading" @click="doAdd">添加</el-button>
+        <el-button @click="showDialog = false">取消</el-button>
+        <el-button type="primary" :loading="loading" @click="doSubmit">
+          {{ isEdit ? '保存' : '添加' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -139,14 +149,16 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
-import { addChannel, listChannels, listCameras, listModels } from '../api'
-import { ElMessage } from 'element-plus'
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { addChannel, listChannels, updateChannel, deleteChannel, listCameras, listModels } from '../api'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const channels = ref([])
 const cameras = ref([])
 const models = ref([])
-const showAdd = ref(false)
+const showDialog = ref(false)
+const isEdit = ref(false)
+const editingName = ref('')
 const loading = ref(false)
 
 const defaultForm = () => ({
@@ -160,10 +172,16 @@ const defaultForm = () => ({
 })
 const form = ref(defaultForm())
 
-// 收集所有已使用的地址
+function parseAddr(addr) {
+  const m = addr.match(/^([A-Z]+)(\d+)$/)
+  return m ? { prefix: m[1], num: parseInt(m[2]) } : { prefix: '', num: 0 }
+}
+
+// 收集所有已使用的地址（编辑时排除当前通道）
 const usedAddresses = computed(() => {
   const set = new Set()
   channels.value.forEach(ch => {
+    if (isEdit.value && ch.name === editingName.value) return
     for (const k of ['trigger_addr','busy_addr','done_addr','result_addr','defect_count_addr','inference_time_addr']) {
       if (ch[k]) set.add(ch[k].toUpperCase())
     }
@@ -182,29 +200,68 @@ async function refresh() {
 }
 
 function openAdd() {
+  isEdit.value = false
+  editingName.value = ''
   form.value = defaultForm()
-  showAdd.value = true
+  showDialog.value = true
 }
 
-async function doAdd() {
+function openEdit(ch) {
+  isEdit.value = true
+  editingName.value = ch.name
+  const t = parseAddr(ch.trigger_addr || 'EX0')
+  const b = parseAddr(ch.busy_addr || 'VM100')
+  const d = parseAddr(ch.done_addr || 'EY0')
+  const r = parseAddr(ch.result_addr || 'EY1')
+  const dc = parseAddr(ch.defect_count_addr || 'EW0')
+  const it = parseAddr(ch.inference_time_addr || 'EW1')
+  form.value = {
+    name: ch.name, camera_id: ch.camera_id, model_id: ch.model_id,
+    trigger_prefix: t.prefix || 'EX', trigger_num: t.num,
+    busy_prefix: b.prefix || 'VM', busy_num: b.num,
+    done_prefix: d.prefix || 'EY', done_num: d.num,
+    result_prefix: r.prefix || 'EY', result_num: r.num,
+    defect_prefix: dc.prefix || 'EW', defect_num: dc.num,
+    time_prefix: it.prefix || 'EW', time_num: it.num,
+  }
+  showDialog.value = true
+}
+
+function buildPayload() {
+  return {
+    name: form.value.name,
+    camera_id: form.value.camera_id,
+    model_id: form.value.model_id,
+    trigger_addr: form.value.trigger_prefix + form.value.trigger_num,
+    busy_addr: form.value.busy_prefix + form.value.busy_num,
+    done_addr: form.value.done_prefix + form.value.done_num,
+    result_addr: form.value.result_prefix + form.value.result_num,
+    defect_count_addr: form.value.defect_prefix + form.value.defect_num,
+    inference_time_addr: form.value.time_prefix + form.value.time_num,
+  }
+}
+
+async function doSubmit() {
   loading.value = true
   try {
-    const payload = {
-      name: form.value.name,
-      camera_id: form.value.camera_id,
-      model_id: form.value.model_id,
-      trigger_addr: form.value.trigger_prefix + form.value.trigger_num,
-      busy_addr: form.value.busy_prefix + form.value.busy_num,
-      done_addr: form.value.done_prefix + form.value.done_num,
-      result_addr: form.value.result_prefix + form.value.result_num,
-      defect_count_addr: form.value.defect_prefix + form.value.defect_num,
-      inference_time_addr: form.value.time_prefix + form.value.time_num,
+    const payload = buildPayload()
+    if (isEdit.value) {
+      await updateChannel(editingName.value, payload)
+      ElMessage.success(`通道 [${form.value.name}] 已更新`)
+    } else {
+      await addChannel(payload)
+      ElMessage.success(`通道 [${form.value.name}] 已添加`)
     }
-    await addChannel(payload)
-    ElMessage.success(`通道 [${form.value.name}] 已添加`)
-    showAdd.value = false
+    showDialog.value = false
     refresh()
   } finally { loading.value = false }
+}
+
+async function doDelete(name) {
+  await ElMessageBox.confirm(`确认删除通道 [${name}]？`, '警告', { type: 'warning' })
+  await deleteChannel(name)
+  ElMessage.success(`通道 [${name}] 已删除`)
+  refresh()
 }
 
 onMounted(refresh)

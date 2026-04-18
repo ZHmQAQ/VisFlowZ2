@@ -1,184 +1,240 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2>软元件监控</h2>
-      <div class="monitor-controls">
-        <el-select v-model="selectedPrefix" style="width:120px" @change="refresh">
-          <el-option v-for="p in prefixes" :key="p.value" :label="p.label" :value="p.value" />
-        </el-select>
-        <el-input-number v-model="startAddr" :min="0" :max="4095" size="small" style="width:120px" />
-        <span style="color:#8892b0;margin:0 4px">~</span>
-        <el-input-number v-model="count" :min="1" :max="256" size="small" style="width:100px" />
-        <el-button :icon="Refresh" @click="refresh" :loading="loading">刷新</el-button>
-        <el-switch v-model="autoRefresh" active-text="自动" @change="toggleAuto" />
+      <h2>变量监控</h2>
+      <div class="header-actions">
+        <el-switch v-model="autoRefresh" active-text="自动刷新" @change="toggleAuto" style="margin-right:12px" />
+        <el-button :icon="Refresh" @click="refreshValues" :loading="loading">刷新</el-button>
+        <el-button type="primary" :icon="Plus" @click="openAdd">添加变量</el-button>
       </div>
     </div>
 
-    <!-- 位设备监控 -->
-    <el-card v-if="isBitDevice">
-      <template #header>{{ selectedPrefix }} 位监控 ({{ startAddr }}~{{ startAddr + count - 1 }})</template>
-      <div class="bit-grid">
-        <div
-          v-for="(val, idx) in bitData"
-          :key="idx"
-          class="bit-cell"
-          :class="{ on: val }"
-          @click="toggleBit(idx)"
-        >
-          <div class="bit-addr">{{ selectedPrefix }}{{ startAddr + idx }}</div>
-          <div class="bit-value">{{ val ? 'ON' : 'OFF' }}</div>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 字设备监控 -->
-    <el-card v-else>
-      <template #header>{{ selectedPrefix }} 字监控 ({{ startAddr }}~{{ startAddr + count - 1 }})</template>
-      <el-table :data="wordData" stripe size="small">
-        <el-table-column prop="address" label="地址" width="100" />
-        <el-table-column prop="value" label="值 (DEC)" width="120" />
-        <el-table-column prop="hex" label="值 (HEX)" width="120" />
-        <el-table-column label="操作" width="200">
-          <template #default="{ row }">
-            <el-input-number
-              v-model="row.newValue"
+    <el-table :data="variables" stripe size="small">
+      <el-table-column prop="name" label="变量名" width="160" />
+      <el-table-column label="地址" width="100">
+        <template #default="{ row }">
+          <el-tag size="small" effect="plain">{{ row.prefix }}{{ row.num }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="类型" width="80">
+        <template #default="{ row }">
+          {{ isBit(row.prefix) ? '位' : '字' }}
+        </template>
+      </el-table-column>
+      <el-table-column label="当前值" width="180">
+        <template #default="{ row }">
+          <!-- 位变量：ON/OFF 开关 -->
+          <template v-if="isBit(row.prefix)">
+            <el-switch
+              :model-value="!!row._value"
+              @change="(val) => doWrite(row, val)"
+              active-text="ON"
+              inactive-text="OFF"
               size="small"
-              style="width:110px"
-              :min="-32768"
-              :max="32767"
             />
-            <el-button size="small" type="primary" text @click="writeWord(row)">写入</el-button>
           </template>
-        </el-table-column>
-        <el-table-column />
-      </el-table>
-    </el-card>
+          <!-- 字变量：数值 + 写入 -->
+          <template v-else>
+            <span class="word-value">{{ row._value ?? '—' }}</span>
+            <span v-if="row._value != null" class="word-hex">
+              (0x{{ ((row._value < 0 ? row._value + 65536 : row._value) & 0xFFFF).toString(16).toUpperCase().padStart(4, '0') }})
+            </span>
+          </template>
+        </template>
+      </el-table-column>
+      <el-table-column label="写入" width="200" v-if="hasWordVars">
+        <template #default="{ row }">
+          <template v-if="!isBit(row.prefix)">
+            <div style="display:flex;gap:4px;align-items:center">
+              <el-input-number v-model="row._newValue" size="small" style="width:120px" :min="-32768" :max="32767" controls-position="right" />
+              <el-button size="small" type="primary" text @click="doWrite(row, row._newValue)">写入</el-button>
+            </div>
+          </template>
+        </template>
+      </el-table-column>
+      <el-table-column prop="comment" label="备注" min-width="120" />
+      <el-table-column label="操作" width="100">
+        <template #default="{ row, $index }">
+          <el-button size="small" type="primary" text @click="openEdit($index)">
+            <el-icon><Edit /></el-icon>
+          </el-button>
+          <el-button size="small" type="danger" text @click="doRemove($index)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <el-empty v-if="variables.length === 0" description="暂无变量，点击「添加变量」开始定义" />
+
+    <!-- 添加/编辑对话框 -->
+    <el-dialog v-model="showDialog" :title="editIndex >= 0 ? '编辑变量' : '添加变量'" width="440" :close-on-click-modal="false">
+      <el-form :model="varForm" label-width="80px">
+        <el-form-item label="变量名">
+          <el-input v-model="varForm.name" placeholder="如: 拍照触发" />
+        </el-form-item>
+        <el-form-item label="地址">
+          <div style="display:flex;gap:8px;width:100%">
+            <el-select v-model="varForm.prefix" style="width:140px">
+              <el-option label="EX (位入)" value="EX" />
+              <el-option label="EY (位出)" value="EY" />
+              <el-option label="VM (内部位)" value="VM" />
+              <el-option label="SM (系统位)" value="SM" />
+              <el-option label="ED (字入)" value="ED" />
+              <el-option label="EW (字出)" value="EW" />
+              <el-option label="VD (内部字)" value="VD" />
+              <el-option label="SD (系统字)" value="SD" />
+            </el-select>
+            <el-input-number v-model="varForm.num" :min="0" :max="varForm.prefix === 'VM' || varForm.prefix === 'VD' ? 4095 : 255"
+                             controls-position="right" style="flex:1" />
+          </div>
+          <div style="font-size:12px;color:#8892b0;margin-top:4px">
+            {{ isBit(varForm.prefix) ? '位设备 — 可点击切换 ON/OFF' : '字设备 — 可输入数值写入' }}
+          </div>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="varForm.comment" placeholder="如: 工位1拍照触发信号" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showDialog = false">取消</el-button>
+        <el-button type="primary" @click="doSaveVar">{{ editIndex >= 0 ? '保存' : '添加' }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
-import { dumpDevice, writeDevice } from '../api'
+import { Plus, Refresh, Edit, Delete } from '@element-plus/icons-vue'
+import { bulkReadDevice, writeDevice } from '../api'
 import { ElMessage } from 'element-plus'
 
-const prefixes = [
-  { value: 'EX', label: 'EX 输入位' },
-  { value: 'EY', label: 'EY 输出位' },
-  { value: 'VM', label: 'VM 内部位' },
-  { value: 'ED', label: 'ED 输入字' },
-  { value: 'EW', label: 'EW 输出字' },
-  { value: 'VD', label: 'VD 内部字' },
-  { value: 'SM', label: 'SM 系统位' },
-  { value: 'SD', label: 'SD 系统字' },
-]
-
+const STORAGE_KEY = 'vmodule_variables'
 const BIT_PREFIXES = ['EX', 'EY', 'VM', 'SM']
 
-const selectedPrefix = ref('EX')
-const startAddr = ref(0)
-const count = ref(32)
+const variables = ref([])
+const showDialog = ref(false)
+const editIndex = ref(-1)
 const loading = ref(false)
 const autoRefresh = ref(false)
-const bitData = ref([])
-const wordData = ref([])
 let _timer = null
 
-const isBitDevice = computed(() => BIT_PREFIXES.includes(selectedPrefix.value))
+const defaultVar = () => ({ name: '', prefix: 'EX', num: 0, comment: '', _value: null, _newValue: 0 })
+const varForm = ref(defaultVar())
 
-async function refresh() {
+const hasWordVars = computed(() => variables.value.some(v => !isBit(v.prefix)))
+
+function isBit(prefix) {
+  return BIT_PREFIXES.includes(prefix)
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const arr = JSON.parse(raw)
+      variables.value = arr.map(v => ({ ...v, _value: null, _newValue: 0 }))
+    }
+  } catch {}
+}
+
+function saveToStorage() {
+  const data = variables.value.map(({ name, prefix, num, comment }) => ({ name, prefix, num, comment }))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+}
+
+async function refreshValues() {
+  if (variables.value.length === 0) return
   loading.value = true
   try {
-    const raw = await dumpDevice(selectedPrefix.value, startAddr.value, count.value)
-    if (isBitDevice.value) {
-      // dump 返回的是字符串或对象，按实际 API 解析
-      if (Array.isArray(raw)) {
-        bitData.value = raw
-      } else if (typeof raw === 'string') {
-        bitData.value = raw.split('').map(c => c === '1')
-      } else {
-        bitData.value = Array(count.value).fill(false)
+    const addrs = variables.value.map(v => `${v.prefix}${v.num}`)
+    const data = await bulkReadDevice(addrs)
+    variables.value.forEach(v => {
+      const key = `${v.prefix}${v.num}`
+      if (data[key] !== undefined && !data[key]?.error) {
+        v._value = data[key]
       }
-    } else {
-      if (Array.isArray(raw)) {
-        wordData.value = raw.map((v, i) => ({
-          address: `${selectedPrefix.value}${startAddr.value + i}`,
-          value: v,
-          hex: '0x' + ((v < 0 ? v + 65536 : v) & 0xFFFF).toString(16).toUpperCase().padStart(4, '0'),
-          newValue: v,
-        }))
-      } else {
-        wordData.value = []
-      }
-    }
-  } catch { /* ignore */ } finally { loading.value = false }
+    })
+  } catch {} finally { loading.value = false }
 }
 
-async function toggleBit(idx) {
-  const addr = `${selectedPrefix.value}${startAddr.value + idx}`
-  const current = bitData.value[idx]
-  try {
-    await writeDevice({ address: addr, value: !current })
-    bitData.value[idx] = !current
-  } catch { /* handled by interceptor */ }
+function openAdd() {
+  editIndex.value = -1
+  varForm.value = defaultVar()
+  showDialog.value = true
 }
 
-async function writeWord(row) {
+function openEdit(idx) {
+  editIndex.value = idx
+  const v = variables.value[idx]
+  varForm.value = { name: v.name, prefix: v.prefix, num: v.num, comment: v.comment }
+  showDialog.value = true
+}
+
+function doSaveVar() {
+  if (!varForm.value.name.trim()) {
+    ElMessage.warning('请输入变量名')
+    return
+  }
+  if (editIndex.value >= 0) {
+    const v = variables.value[editIndex.value]
+    v.name = varForm.value.name
+    v.prefix = varForm.value.prefix
+    v.num = varForm.value.num
+    v.comment = varForm.value.comment
+    v._value = null
+  } else {
+    variables.value.push({ ...varForm.value, _value: null, _newValue: 0 })
+  }
+  saveToStorage()
+  showDialog.value = false
+  refreshValues()
+}
+
+function doRemove(idx) {
+  variables.value.splice(idx, 1)
+  saveToStorage()
+}
+
+async function doWrite(row, val) {
+  const addr = `${row.prefix}${row.num}`
   try {
-    await writeDevice({ address: row.address, value: row.newValue })
-    row.value = row.newValue
-    ElMessage.success(`${row.address} = ${row.newValue}`)
-  } catch { /* handled */ }
+    await writeDevice({ address: addr, value: val })
+    row._value = val
+    ElMessage.success(`${addr} = ${val}`)
+  } catch {}
 }
 
 function toggleAuto(val) {
+  if (_timer) { clearInterval(_timer); _timer = null }
   if (val) {
-    _timer = setInterval(refresh, 500)
-  } else {
-    clearInterval(_timer)
-    _timer = null
+    _timer = setInterval(refreshValues, 500)
   }
 }
 
-onMounted(refresh)
+onMounted(() => {
+  loadFromStorage()
+  refreshValues()
+})
 onUnmounted(() => { if (_timer) clearInterval(_timer) })
 </script>
 
 <style scoped lang="scss">
-.monitor-controls {
+.header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.bit-grid {
-  display: grid;
-  grid-template-columns: repeat(16, 1fr);
-  gap: 4px;
+.word-value {
+  font-weight: 600;
+  font-size: 14px;
 }
 
-.bit-cell {
-  text-align: center;
-  padding: 6px 2px;
-  border: 1px solid #2a3268;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s;
-
-  &:hover { border-color: #4fc3f7; }
-
-  &.on {
-    background: rgba(102, 187, 106, 0.2);
-    border-color: #66bb6a;
-  }
-
-  .bit-addr {
-    font-size: 10px;
-    color: #8892b0;
-  }
-  .bit-value {
-    font-size: 11px;
-    font-weight: 600;
-  }
+.word-hex {
+  color: #8892b0;
+  font-size: 12px;
+  margin-left: 4px;
 }
 </style>

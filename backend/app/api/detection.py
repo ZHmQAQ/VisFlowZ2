@@ -82,12 +82,50 @@ async def list_channels():
             "trigger_addr": ch.trigger_addr,
             "camera_id": ch.camera_id,
             "model_id": ch.model_id,
+            "busy_addr": ch.busy_addr,
             "done_addr": ch.done_addr,
             "result_addr": ch.result_addr,
+            "defect_count_addr": ch.defect_count_addr,
+            "inference_time_addr": ch.inference_time_addr,
             "busy": getattr(ch, '_busy', False),
         }
         for ch in _detection_block._channels
     ]
+
+
+@router.put("/channels/{name}", summary="编辑检测通道")
+async def update_channel(name: str, req: ChannelCreate):
+    if _detection_block is None:
+        raise HTTPException(503, "检测程序块未初始化")
+    for i, ch in enumerate(_detection_block._channels):
+        if ch.name == name:
+            _detection_block._channels[i] = DetectionChannel(
+                name=req.name,
+                trigger_addr=req.trigger_addr,
+                camera_id=req.camera_id,
+                model_id=req.model_id,
+                busy_addr=req.busy_addr,
+                done_addr=req.done_addr,
+                result_addr=req.result_addr,
+                defect_count_addr=req.defect_count_addr,
+                inference_time_addr=req.inference_time_addr,
+                total_count_addr=req.total_count_addr,
+                ng_count_addr=req.ng_count_addr,
+                ok_max_addr=req.ok_max_addr,
+            )
+            return {"ok": True, "name": req.name}
+    raise HTTPException(404, f"通道 [{name}] 不存在")
+
+
+@router.delete("/channels/{name}", summary="删除检测通道")
+async def delete_channel(name: str):
+    if _detection_block is None:
+        raise HTTPException(503, "检测程序块未初始化")
+    for i, ch in enumerate(_detection_block._channels):
+        if ch.name == name:
+            _detection_block._channels.pop(i)
+            return {"ok": True, "name": name}
+    raise HTTPException(404, f"通道 [{name}] 不存在")
 
 
 # ==================== Multi-frame channels ====================
@@ -136,8 +174,42 @@ async def list_multiframe_channels():
             "cmd_addr": ch.cmd_addr,
             "status_addr": ch.status_addr,
             "result_addr": ch.result_addr,
+            "count_addr": ch.count_addr,
+            "time_addr": ch.time_addr,
             "busy": ch._busy,
             "frames_collected": len(ch._frames),
         }
         for ch in _multiframe_block._channels
     ]
+
+
+@router.put("/multiframe/{name}", summary="编辑多帧通道")
+async def update_multiframe_channel(name: str, req: MultiFrameChannelCreate):
+    if _multiframe_block is None:
+        raise HTTPException(503, "MultiFrame block not initialized")
+    for i, ch in enumerate(_multiframe_block._channels):
+        if ch.name == name:
+            _multiframe_block._channels[i] = MultiFrameChannel(
+                name=req.name,
+                camera_id=req.camera_id,
+                model_id=req.model_id,
+                frame_count=req.frame_count,
+                cmd_addr=req.cmd_addr,
+                status_addr=req.status_addr,
+                result_addr=req.result_addr,
+                count_addr=req.count_addr,
+                time_addr=req.time_addr,
+            )
+            return {"ok": True, "name": req.name}
+    raise HTTPException(404, f"通道 [{name}] 不存在")
+
+
+@router.delete("/multiframe/{name}", summary="删除多帧通道")
+async def delete_multiframe_channel(name: str):
+    if _multiframe_block is None:
+        raise HTTPException(503, "MultiFrame block not initialized")
+    for i, ch in enumerate(_multiframe_block._channels):
+        if ch.name == name:
+            _multiframe_block._channels.pop(i)
+            return {"ok": True, "name": name}
+    raise HTTPException(404, f"通道 [{name}] 不存在")
