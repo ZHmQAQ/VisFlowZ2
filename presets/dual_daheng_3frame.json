@@ -1,6 +1,6 @@
 {
   "name": "dual_daheng_3frame",
-  "description": "Two Daheng GigE cameras, 3 frames each. Register-polling mode. Strategy: OK=1, Repairable=2, Unrepairable=3.",
+  "description": "Two Daheng GigE cameras, 3 frames each. Cam1: D30/D31, Cam2: D40/D41. Strategy result: D33/D43.",
 
   "plc_connections": [
     {
@@ -19,11 +19,11 @@
     {"plc_name": "PLC1", "plc_addr": "D33",  "vmodule_addr": "EW2",  "description": "Cam1 strategy result: 1=OK 2=repairable 3=unrepairable"},
     {"plc_name": "PLC1", "plc_addr": "D34",  "vmodule_addr": "EW3",  "description": "Cam1 inference time ms"},
 
-    {"plc_name": "PLC1", "plc_addr": "D30",  "vmodule_addr": "ED10", "description": "Cam2 command: 1/2/3=capture frame N"},
-    {"plc_name": "PLC1", "plc_addr": "D31",  "vmodule_addr": "EW10", "description": "Cam2 status: 11/12/13=frameN done, 20=inferring, 0=idle"},
-    {"plc_name": "PLC1", "plc_addr": "D32",  "vmodule_addr": "EW11", "description": "Cam2 defect count"},
-    {"plc_name": "PLC1", "plc_addr": "D33",  "vmodule_addr": "EW12", "description": "Cam2 strategy result: 1=OK 2=repairable 3=unrepairable"},
-    {"plc_name": "PLC1", "plc_addr": "D34",  "vmodule_addr": "EW13", "description": "Cam2 inference time ms"}
+    {"plc_name": "PLC1", "plc_addr": "D40",  "vmodule_addr": "ED10", "description": "Cam2 command: 1/2/3=capture frame N"},
+    {"plc_name": "PLC1", "plc_addr": "D41",  "vmodule_addr": "EW10", "description": "Cam2 status: 11/12/13=frameN done, 20=inferring, 0=idle"},
+    {"plc_name": "PLC1", "plc_addr": "D42",  "vmodule_addr": "EW11", "description": "Cam2 defect count"},
+    {"plc_name": "PLC1", "plc_addr": "D43",  "vmodule_addr": "EW12", "description": "Cam2 strategy result: 1=OK 2=repairable 3=unrepairable"},
+    {"plc_name": "PLC1", "plc_addr": "D44",  "vmodule_addr": "EW13", "description": "Cam2 inference time ms"}
   ],
 
   "detection_channels": [],
@@ -54,8 +54,24 @@
   ],
 
   "cameras": [
-    {"camera_id": "daheng_cam1", "camera_type": "daheng", "config": {}},
-    {"camera_id": "daheng_cam2", "camera_type": "daheng", "config": {}}
+    {
+      "camera_id": "daheng_cam1",
+      "camera_type": "daheng",
+      "config": {
+        "serial_number": "CHANGE_ME_CAM1",
+        "exposure": 10000,
+        "gain": 1.0
+      }
+    },
+    {
+      "camera_id": "daheng_cam2",
+      "camera_type": "daheng",
+      "config": {
+        "serial_number": "CHANGE_ME_CAM2",
+        "exposure": 10000,
+        "gain": 1.0
+      }
+    }
   ],
 
   "strategy": {

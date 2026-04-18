@@ -94,8 +94,8 @@ async def list_plc():
     return {
         name: {
             "connected": client.connected,
-            "host": client._config.host,
-            "port": client._config.port,
+            "host": client.config.host,
+            "port": client.config.port,
         }
         for name, client in engine._plc_clients.items()
     }
@@ -204,9 +204,13 @@ async def bulk_read(req: DeviceBulkReadRequest):
 
 @router.get("/device/dump/{prefix}", summary="导出某类软元件")
 async def dump_device(prefix: str, start: int = 0, count: int = 32):
+    from app.core.softdevice.memory import DevicePrefix
     mem = _get_memory()
     try:
-        return mem.dump(prefix, start, count)
+        dp = DevicePrefix(prefix.upper())
+        return mem.dump(dp, start, count)
+    except (ValueError, KeyError):
+        raise HTTPException(400, f"Invalid prefix: {prefix}. Valid: {[p.value for p in DevicePrefix]}")
     except Exception as e:
         raise HTTPException(400, str(e))
 

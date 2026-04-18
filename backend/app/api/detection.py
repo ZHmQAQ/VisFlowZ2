@@ -84,7 +84,7 @@ async def list_channels():
             "model_id": ch.model_id,
             "done_addr": ch.done_addr,
             "result_addr": ch.result_addr,
-            "busy": False,
+            "busy": getattr(ch, '_busy', False),
         }
         for ch in _detection_block._channels
     ]

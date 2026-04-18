@@ -28,7 +28,7 @@ import asyncio
 import time
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Callable, Awaitable
+from typing import Dict, List, Optional, Tuple, Callable, Awaitable
 
 from app.core.softdevice.memory import (
     SoftDeviceMemory, SoftDeviceAddress, DevicePrefix,
@@ -242,8 +242,8 @@ class ScanEngine:
                 self.memory._update_system(
                     scan_cycle_ms=self._last_scan_ms,
                     plc_count=sum(1 for c in self._plc_clients.values() if c.connected),
-                    model_count=0,  # TODO: 从模型管理器获取
-                    camera_count=0,  # TODO: 从相机管理器获取
+                    model_count=self._get_model_count(),
+                    camera_count=self._get_camera_count(),
                 )
 
                 self._consecutive_errors = 0
@@ -253,9 +253,10 @@ class ScanEngine:
                 logger.error(f"扫描周期异常 ({self._consecutive_errors}): {e}")
                 if self._consecutive_errors >= self.config.max_consecutive_errors:
                     logger.critical("连续错误过多，暂停扫描 5 秒")
-                    # SM11: 通信异常
-                    self.memory.write_bit(SoftDeviceAddress.parse("SM11"), True)
+                    # Use internal write to bypass readonly check for SM11
+                    self.memory._bits[DevicePrefix.SM].set(11, True)
                     await asyncio.sleep(5)
+                    self.memory._bits[DevicePrefix.SM].set(11, False)
                     self._consecutive_errors = 0
 
             # 等待到目标周期
@@ -348,3 +349,20 @@ class ScanEngine:
             "io_mappings": len(self._io_mappings),
             "program_blocks": len(self._program_blocks),
         }
+
+    def _get_model_count(self) -> int:
+        """Get loaded model count from inference manager."""
+        try:
+            from app.core.inference.manager import inference_manager
+            return inference_manager.get_loaded_count()
+        except Exception:
+            return 0
+
+    def _get_camera_count(self) -> int:
+        """Get connected camera count from camera manager."""
+        try:
+            from app.core.camera.manager import camera_manager
+            return len([c for c in camera_manager.get_all_cameras().values()
+                        if c.is_open])
+        except Exception:
+            return 0
