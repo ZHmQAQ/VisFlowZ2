@@ -577,22 +577,12 @@ class SoftDeviceMemory:
 
     # ==================== 调试/监控 ====================
 
-    def dump(self, prefix: DevicePrefix, start: int = 0, count: int = 16) -> str:
-        """导出软元件状态（调试用）"""
-        lines = []
+    def dump(self, prefix: DevicePrefix, start: int = 0, count: int = 16):
+        """导出软元件状态，返回数组（位设备返回bool数组，字设备返回int数组）"""
         if prefix in self._bits:
             arr = self._bits[prefix]
-            for i in range(start, min(start + count, arr.size)):
-                v = arr.get(i)
-                if v:
-                    lines.append(f"  {prefix.value}{i} = ON")
+            return [arr.get(i) for i in range(start, min(start + count, arr.size))]
         elif prefix in self._words:
             arr = self._words[prefix]
-            for i in range(start, min(start + count, arr.size)):
-                v = arr.get(i)
-                if v != 0:
-                    lines.append(f"  {prefix.value}{i} = {v} (H{v & 0xFFFF:04X})")
-
-        if not lines:
-            return f"  ({prefix.value}{start}~{prefix.value}{start + count - 1} 全部为 0/OFF)"
-        return "\n".join(lines)
+            return [arr.get(i) for i in range(start, min(start + count, arr.size))]
+        return []

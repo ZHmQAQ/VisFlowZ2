@@ -87,10 +87,12 @@ app.add_middleware(
 # -- Health check --
 @app.get("/health")
 async def health():
+    import platform
     return {
         "status": "ok",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
+        "python": platform.python_version(),
         "scan_engine": scan_engine.get_status() if scan_engine else None,
     }
 
