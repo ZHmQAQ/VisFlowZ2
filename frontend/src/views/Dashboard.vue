@@ -49,11 +49,11 @@
           >
             <el-button :icon="Upload">加载预设</el-button>
           </el-upload>
-          <span style="font-size:12px;color:#8892b0;">上传 .json 预设文件，一键配置 PLC连接 + I/O映射 + 检测通道</span>
+          <el-button :icon="Download" @click="doSavePreset" :loading="saving">保存预设</el-button>
         </div>
       </el-card>
 
-      <!-- 系统软元件 -->
+      <!-- 预设操作提示 -->
       <el-card style="grid-column: span 3">
         <template #header>
           <span>系统软元件 (SM/SD)</span>
@@ -71,20 +71,58 @@
           <el-table-column prop="desc" label="说明" />
         </el-table>
       </el-card>
+
+      <!-- 实时监控 -->
+      <el-card style="grid-column: span 6">
+        <template #header>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span>实时监控</span>
+            <div>
+              <el-switch v-model="camAutoRefresh" active-text="自动刷新" style="margin-right:8px" @change="toggleCamRefresh" />
+              <el-button size="small" text @click="refreshCameras">
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </template>
+        <div v-if="openCameras.length === 0" style="text-align:center;color:#8892b0;padding:20px 0">
+          暂无已打开的相机，请前往
+          <router-link to="/cameras" style="color:#4fc3f7">相机管理</router-link>
+          添加并打开相机
+        </div>
+        <div v-else class="cam-grid">
+          <div v-for="cam in openCameras" :key="cam.camera_id" class="cam-thumb"
+               @click="$router.push('/cameras')">
+            <img v-if="camFrames[cam.camera_id]"
+                 :src="camFrames[cam.camera_id]"
+                 class="cam-thumb-img" />
+            <div v-else class="cam-thumb-placeholder">无画面</div>
+            <div class="cam-thumb-label">
+              <span class="status-dot online" />
+              {{ cam.camera_id }}
+            </div>
+          </div>
+        </div>
+      </el-card>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { VideoPlay, VideoPause, Upload } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { VideoPlay, VideoPause, Upload, Download, Refresh } from '@element-plus/icons-vue'
 import { useEngineStore } from '../stores/engine'
-import { startEngine, stopEngine, loadPreset, bulkReadDevice } from '../api'
+import {
+  startEngine, stopEngine, loadPreset, savePreset,
+  bulkReadDevice, listCameras, captureFrame, getFrameUrl,
+} from '../api'
 import { ElMessage } from 'element-plus'
 
 const engine = useEngineStore()
 const loading = ref(false)
+const saving = ref(false)
 
+// ---- 系统软元件 ----
 const systemDevices = ref([
   { address: 'SM0', value: false, desc: '常 ON' },
   { address: 'SM1', value: false, desc: '常 OFF' },
@@ -103,9 +141,10 @@ async function refreshSystem() {
     systemDevices.value.forEach(d => {
       if (data[d.address] !== undefined) d.value = data[d.address]
     })
-  } catch { /* ignore */ }
+  } catch {}
 }
 
+// ---- 引擎控制 ----
 async function doStart() {
   loading.value = true
   try {
@@ -124,6 +163,7 @@ async function doStop() {
   } finally { loading.value = false }
 }
 
+// ---- 预设 ----
 function handlePresetUpload(file) {
   const reader = new FileReader()
   reader.onload = async (e) => {
@@ -132,7 +172,7 @@ function handlePresetUpload(file) {
       const res = await loadPreset(preset)
       ElMessage.success(`预设已加载: ${res.plc_connections} PLC, ${res.io_mappings} 映射, ${res.detection_channels} 通道`)
       engine.refresh()
-    } catch (err) {
+    } catch {
       ElMessage.error('预设文件解析失败')
     }
   }
@@ -140,11 +180,69 @@ function handlePresetUpload(file) {
   return false
 }
 
+async function doSavePreset() {
+  saving.value = true
+  try {
+    const data = await savePreset()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `vmodule_preset_${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('预设已保存')
+  } catch {
+    ElMessage.error('保存预设失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+// ---- 实时监控 ----
+const cameras = ref([])
+const camFrames = ref({})
+const camAutoRefresh = ref(true)
+let _camTimer = null
+let _frameCounter = 0
+
+const openCameras = computed(() => cameras.value.filter(c => c.is_open))
+
+async function refreshCameras() {
+  try {
+    cameras.value = await listCameras()
+  } catch {}
+  // 对已打开的相机拍照并刷新画面
+  for (const cam of openCameras.value) {
+    try {
+      await captureFrame(cam.camera_id)
+      _frameCounter++
+      camFrames.value[cam.camera_id] = getFrameUrl(cam.camera_id) + '?t=' + _frameCounter
+    } catch {}
+  }
+}
+
+function toggleCamRefresh(val) {
+  if (_camTimer) { clearInterval(_camTimer); _camTimer = null }
+  if (val) {
+    _camTimer = setInterval(refreshCameras, 2000)
+  }
+}
+
+// ---- 生命周期 ----
 onMounted(() => {
   refreshSystem()
   _sysTimer = setInterval(refreshSystem, 2000)
+  refreshCameras()
+  if (camAutoRefresh.value) {
+    _camTimer = setInterval(refreshCameras, 2000)
+  }
 })
-onUnmounted(() => clearInterval(_sysTimer))
+
+onUnmounted(() => {
+  clearInterval(_sysTimer)
+  if (_camTimer) clearInterval(_camTimer)
+})
 </script>
 
 <style scoped lang="scss">
@@ -164,5 +262,54 @@ onUnmounted(() => clearInterval(_sysTimer))
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cam-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.cam-thumb {
+  position: relative;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  border: 1px solid #2a3268;
+
+  &:hover { border-color: #4fc3f7; }
+}
+
+.cam-thumb-img {
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  display: block;
+}
+
+.cam-thumb-placeholder {
+  width: 100%;
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 13px;
+}
+
+.cam-thumb-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.7);
+  color: #e0e6ff;
+  font-size: 12px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
 }
 </style>

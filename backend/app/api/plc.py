@@ -364,3 +364,87 @@ async def load_preset(preset: PresetConfig):
         "multiframe_channels": mf_count,
         "cameras": cam_count,
     }
+
+
+@router.get("/preset/save", summary="导出当前配置为预设 JSON")
+async def save_preset():
+    from app.api.detection import _detection_block, _multiframe_block
+    from app.core.camera.manager import camera_manager
+    from app.api.model import _strategy_maps
+
+    engine = _get_engine()
+
+    plc_connections = [
+        {"name": name, "host": c.config.host, "port": c.config.port,
+         "unit_id": c.config.unit_id, "timeout": c.config.timeout}
+        for name, c in engine._plc_clients.items()
+    ]
+
+    io_mappings = [
+        {"plc_name": m.plc_name, "plc_addr": m.plc_addr,
+         "vmodule_addr": m.vmodule_addr, "description": m.description}
+        for m in engine._io_mappings
+    ]
+
+    detection_channels = []
+    if _detection_block:
+        for ch in _detection_block._channels:
+            detection_channels.append({
+                "name": ch.name, "trigger_addr": ch.trigger_addr,
+                "camera_id": ch.camera_id, "model_id": ch.model_id,
+                "busy_addr": ch.busy_addr, "done_addr": ch.done_addr,
+                "result_addr": ch.result_addr,
+                "defect_count_addr": ch.defect_count_addr,
+                "inference_time_addr": ch.inference_time_addr,
+                "total_count_addr": getattr(ch, 'total_count_addr', ''),
+                "ng_count_addr": getattr(ch, 'ng_count_addr', ''),
+                "ok_max_addr": getattr(ch, 'ok_max_addr', ''),
+            })
+
+    multiframe_channels = []
+    if _multiframe_block:
+        for ch in _multiframe_block._channels:
+            multiframe_channels.append({
+                "name": ch.name, "camera_id": ch.camera_id,
+                "model_id": ch.model_id, "frame_count": ch.frame_count,
+                "cmd_addr": ch.cmd_addr, "status_addr": ch.status_addr,
+                "result_addr": ch.result_addr,
+                "count_addr": ch.count_addr, "time_addr": ch.time_addr,
+            })
+
+    cameras = []
+    for vcam in camera_manager.get_all_cameras().values():
+        cameras.append({
+            "camera_id": vcam.camera_id,
+            "camera_type": vcam.camera_type,
+            "config": vcam.config,
+        })
+
+    strategy = None
+    if _strategy_maps:
+        for mid, smap in _strategy_maps.items():
+            strategy = {"model_id": mid, "strategy_map": smap}
+            break
+
+    return {
+        "plc_connections": plc_connections,
+        "io_mappings": io_mappings,
+        "detection_channels": detection_channels,
+        "multiframe_channels": multiframe_channels,
+        "cameras": cameras,
+        "strategy": strategy,
+    }
+
+
+class EngineConfigUpdate(BaseModel):
+    target_cycle_ms: int = Field(default=20, ge=5, le=1000)
+    modbus_timeout: float = Field(default=1.0, ge=0.1, le=10.0)
+
+
+@router.put("/engine/config", summary="更新引擎运行时配置")
+async def update_engine_config(req: EngineConfigUpdate):
+    engine = _get_engine()
+    engine.config.target_cycle_ms = req.target_cycle_ms
+    for client in engine._plc_clients.values():
+        client.config.timeout = req.modbus_timeout
+    return {"ok": True, "target_cycle_ms": req.target_cycle_ms, "modbus_timeout": req.modbus_timeout}

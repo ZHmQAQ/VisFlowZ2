@@ -67,6 +67,7 @@ const menuItems = [
   { path: '/plc', title: 'PLC 连接', icon: 'Connection' },
   { path: '/mappings', title: 'I/O 映射', icon: 'Switch' },
   { path: '/detection', title: '检测通道', icon: 'Camera' },
+  { path: '/topology', title: '系统拓扑', icon: 'Share' },
   { path: '/monitor', title: '软元件监控', icon: 'Monitor' },
   { path: '/cameras', title: '相机管理', icon: 'VideoCamera' },
   { path: '/models', title: '模型管理', icon: 'Cpu' },

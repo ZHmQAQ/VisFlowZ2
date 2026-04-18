@@ -36,6 +36,7 @@ echo.
 echo [START] Launching VModule backend...
 echo [TIP] Press Ctrl+C to stop
 echo.
+start http://localhost:8100
 cd /d "%~dp0backend"
 python run.py
 pause

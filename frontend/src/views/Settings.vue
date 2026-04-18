@@ -16,7 +16,7 @@
           <span style="margin-left:8px;color:#8892b0">秒</span>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="save">保存（需重启生效）</el-button>
+          <el-button type="primary" :loading="saving" @click="save">保存</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -37,20 +37,33 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getHealth } from '../api'
+import { getHealth, getEngineStatus, updateEngineConfig } from '../api'
 import { ElMessage } from 'element-plus'
 
 const config = ref({ target_cycle_ms: 20, modbus_timeout: 1.0 })
 const sysInfo = ref({})
+const saving = ref(false)
 
-function save() {
-  ElMessage.info('设置保存功能开发中...')
+async function save() {
+  saving.value = true
+  try {
+    await updateEngineConfig(config.value)
+    ElMessage.success('设置已保存')
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(async () => {
   try {
     const data = await getHealth()
     sysInfo.value = data
+  } catch {}
+  try {
+    const st = await getEngineStatus()
+    if (st.target_cycle_ms) config.value.target_cycle_ms = st.target_cycle_ms
   } catch {}
 })
 </script>

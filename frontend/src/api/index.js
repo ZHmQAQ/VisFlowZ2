@@ -62,6 +62,10 @@ export const getStrategy = (id) => request.get(`/model/${id}/strategy`)
 
 // ============ Preset ============
 export const loadPreset = (data) => request.post('/plc/preset/load', data)
+export const savePreset = () => request.get('/plc/preset/save')
+
+// ============ Engine Config ============
+export const updateEngineConfig = (data) => request.put('/plc/engine/config', data)
 
 // ============ Health ============
 export const getHealth = () => request.get('/health', { baseURL: '' })
