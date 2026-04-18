@@ -14,17 +14,23 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.detection.program_block import DetectionChannel
+from app.core.detection.multiframe import MultiFrameChannel
 
 logger = logging.getLogger("vmodule.api.detection")
-router = APIRouter(prefix="/detection", tags=["检测通道"])
+router = APIRouter(prefix="/detection", tags=["Detection"])
 
-# 运行时存储（后续可持久化到 DB）
 _detection_block = None
+_multiframe_block = None
 
 
 def set_detection_block(block):
     global _detection_block
     _detection_block = block
+
+
+def set_multiframe_block(block):
+    global _multiframe_block
+    _multiframe_block = block
 
 
 class ChannelCreate(BaseModel):
@@ -66,10 +72,10 @@ async def add_channel(req: ChannelCreate):
     return {"ok": True, "name": req.name}
 
 
-@router.get("/channels", summary="查看所有检测通道")
+@router.get("/channels", summary="List all detection channels")
 async def list_channels():
     if _detection_block is None:
-        raise HTTPException(503, "检测程序块未初始化")
+        raise HTTPException(503, "Detection block not initialized")
     return [
         {
             "name": ch.name,
@@ -78,7 +84,60 @@ async def list_channels():
             "model_id": ch.model_id,
             "done_addr": ch.done_addr,
             "result_addr": ch.result_addr,
-            "busy": False,  # TODO: read from memory
+            "busy": False,
         }
         for ch in _detection_block._channels
+    ]
+
+
+# ==================== Multi-frame channels ====================
+
+class MultiFrameChannelCreate(BaseModel):
+    name: str
+    camera_id: str
+    model_id: str
+    frame_count: int = 3
+    cmd_addr: str = Field(..., description="Command register (ED)")
+    status_addr: str = Field(..., description="Status register (EW)")
+    result_addr: str = Field(..., description="Strategy result register (EW)")
+    count_addr: str = Field(default="", description="Defect count register (EW)")
+    time_addr: str = Field(default="", description="Inference time register (EW)")
+
+
+@router.post("/multiframe", summary="Add multi-frame channel")
+async def add_multiframe_channel(req: MultiFrameChannelCreate):
+    if _multiframe_block is None:
+        raise HTTPException(503, "MultiFrame block not initialized")
+    ch = MultiFrameChannel(
+        name=req.name,
+        camera_id=req.camera_id,
+        model_id=req.model_id,
+        frame_count=req.frame_count,
+        cmd_addr=req.cmd_addr,
+        status_addr=req.status_addr,
+        result_addr=req.result_addr,
+        count_addr=req.count_addr,
+        time_addr=req.time_addr,
+    )
+    _multiframe_block.add_channel(ch)
+    return {"ok": True, "name": req.name}
+
+
+@router.get("/multiframe", summary="List multi-frame channels")
+async def list_multiframe_channels():
+    if _multiframe_block is None:
+        raise HTTPException(503, "MultiFrame block not initialized")
+    return [
+        {
+            "name": ch.name,
+            "camera_id": ch.camera_id,
+            "model_id": ch.model_id,
+            "frame_count": ch.frame_count,
+            "cmd_addr": ch.cmd_addr,
+            "status_addr": ch.status_addr,
+            "result_addr": ch.result_addr,
+            "busy": ch._busy,
+            "frames_collected": len(ch._frames),
+        }
+        for ch in _multiframe_block._channels
     ]

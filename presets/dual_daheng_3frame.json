@@ -1,0 +1,69 @@
+{
+  "name": "dual_daheng_3frame",
+  "description": "Two Daheng GigE cameras, 3 frames each. Register-polling mode. Strategy: OK=1, Repairable=2, Unrepairable=3.",
+
+  "plc_connections": [
+    {
+      "name": "PLC1",
+      "host": "192.168.1.10",
+      "port": 502,
+      "unit_id": 1,
+      "timeout": 1.0
+    }
+  ],
+
+  "io_mappings": [
+    {"plc_name": "PLC1", "plc_addr": "D30",  "vmodule_addr": "ED0",  "description": "Cam1 command: 1/2/3=capture frame N"},
+    {"plc_name": "PLC1", "plc_addr": "D31",  "vmodule_addr": "EW0",  "description": "Cam1 status: 11/12/13=frameN done, 20=inferring, 0=idle"},
+    {"plc_name": "PLC1", "plc_addr": "D32",  "vmodule_addr": "EW1",  "description": "Cam1 defect count"},
+    {"plc_name": "PLC1", "plc_addr": "D33",  "vmodule_addr": "EW2",  "description": "Cam1 strategy result: 1=OK 2=repairable 3=unrepairable"},
+    {"plc_name": "PLC1", "plc_addr": "D34",  "vmodule_addr": "EW3",  "description": "Cam1 inference time ms"},
+
+    {"plc_name": "PLC1", "plc_addr": "D30",  "vmodule_addr": "ED10", "description": "Cam2 command: 1/2/3=capture frame N"},
+    {"plc_name": "PLC1", "plc_addr": "D31",  "vmodule_addr": "EW10", "description": "Cam2 status: 11/12/13=frameN done, 20=inferring, 0=idle"},
+    {"plc_name": "PLC1", "plc_addr": "D32",  "vmodule_addr": "EW11", "description": "Cam2 defect count"},
+    {"plc_name": "PLC1", "plc_addr": "D33",  "vmodule_addr": "EW12", "description": "Cam2 strategy result: 1=OK 2=repairable 3=unrepairable"},
+    {"plc_name": "PLC1", "plc_addr": "D34",  "vmodule_addr": "EW13", "description": "Cam2 inference time ms"}
+  ],
+
+  "detection_channels": [],
+
+  "multiframe_channels": [
+    {
+      "name": "Cam1-3Frame",
+      "camera_id": "daheng_cam1",
+      "model_id": "yolo_default",
+      "frame_count": 3,
+      "cmd_addr": "ED0",
+      "status_addr": "EW0",
+      "result_addr": "EW2",
+      "count_addr": "EW1",
+      "time_addr": "EW3"
+    },
+    {
+      "name": "Cam2-3Frame",
+      "camera_id": "daheng_cam2",
+      "model_id": "yolo_default",
+      "frame_count": 3,
+      "cmd_addr": "ED10",
+      "status_addr": "EW10",
+      "result_addr": "EW12",
+      "count_addr": "EW11",
+      "time_addr": "EW13"
+    }
+  ],
+
+  "cameras": [
+    {"camera_id": "daheng_cam1", "camera_type": "daheng", "config": {}},
+    {"camera_id": "daheng_cam2", "camera_type": "daheng", "config": {}}
+  ],
+
+  "strategy": {
+    "model_id": "yolo_default",
+    "strategy_map": {
+      "ok": 1,
+      "repairable": 2,
+      "unrepairable": 3
+    }
+  }
+}

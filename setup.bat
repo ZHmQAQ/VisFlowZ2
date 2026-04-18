@@ -26,7 +26,7 @@ echo [2/3] Activating virtual environment...
 call venv\Scripts\activate.bat
 
 echo [3/3] Installing dependencies...
-pip install --upgrade pip -q
+
 pip install -r requirements.txt -q
 
 if not exist "data\weights" mkdir data\weights

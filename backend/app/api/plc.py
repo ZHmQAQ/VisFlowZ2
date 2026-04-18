@@ -236,22 +236,28 @@ async def engine_stop():
 # ==================== 预设加载 ====================
 
 class PresetConfig(BaseModel):
-    """预设配置（一次性加载 PLC + 映射 + 检测通道）"""
+    """Full preset config"""
     plc_connections: List[PLCConnectionCreate] = []
     io_mappings: List[IOMappingCreate] = []
-    detection_channels: list = []  # 由 detection API 处理
+    detection_channels: list = []
+    multiframe_channels: list = []
+    cameras: list = []
+    strategy: Optional[dict] = None
 
 
-@router.post("/preset/load", summary="加载预设配置")
+@router.post("/preset/load", summary="Load preset config")
 async def load_preset(preset: PresetConfig):
     from app.core.plc.modbus_client import PLCConnection
     from app.core.softdevice.xinje import IOMapping
     from app.core.detection.program_block import DetectionChannel
-    from app.api.detection import _detection_block
+    from app.core.detection.multiframe import MultiFrameChannel
+    from app.api.detection import _detection_block, _multiframe_block
+    from app.core.camera.manager import camera_manager
+    from app.api.model import _strategy_maps
 
     engine = _get_engine()
 
-    # 1. 添加 PLC 连接
+    # 1. PLC connections
     for p in preset.plc_connections:
         conn = PLCConnection(
             name=p.name, host=p.host, port=p.port,
@@ -259,7 +265,7 @@ async def load_preset(preset: PresetConfig):
         )
         engine.add_plc(conn)
 
-    # 2. 添加 I/O 映射
+    # 2. I/O mappings
     for m in preset.io_mappings:
         mapping = IOMapping(
             vmodule_addr=m.vmodule_addr,
@@ -269,7 +275,7 @@ async def load_preset(preset: PresetConfig):
         )
         engine.add_mapping(mapping)
 
-    # 3. 添加检测通道
+    # 3. Detection channels (edge-triggered)
     ch_count = 0
     if _detection_block:
         for ch_data in preset.detection_channels:
@@ -277,9 +283,36 @@ async def load_preset(preset: PresetConfig):
             _detection_block.add_channel(ch)
             ch_count += 1
 
+    # 4. Multi-frame channels (register-polling)
+    mf_count = 0
+    if _multiframe_block:
+        for mf_data in preset.multiframe_channels:
+            ch = MultiFrameChannel(**mf_data)
+            _multiframe_block.add_channel(ch)
+            mf_count += 1
+
+    # 5. Cameras
+    cam_count = 0
+    for cam in preset.cameras:
+        ok = await camera_manager.add_camera(
+            cam.get("camera_id", ""),
+            cam.get("camera_type", "usb"),
+            cam.get("config", {}),
+        )
+        if ok:
+            cam_count += 1
+
+    # 6. Strategy
+    if preset.strategy and preset.strategy.get("model_id"):
+        mid = preset.strategy["model_id"]
+        smap = preset.strategy.get("strategy_map", {})
+        _strategy_maps[mid] = smap
+
     return {
         "ok": True,
         "plc_connections": len(preset.plc_connections),
         "io_mappings": len(preset.io_mappings),
         "detection_channels": ch_count,
+        "multiframe_channels": mf_count,
+        "cameras": cam_count,
     }
