@@ -1,12 +1,11 @@
 @echo off
 title VModule - Setup
-
 echo ============================================
 echo   VModule Environment Setup
 echo ============================================
 echo.
 
-cd /d "%~dp0backend"
+cd /d "%~dp0"
 
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
@@ -15,21 +14,20 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-if not exist "venv" (
-    echo [1/3] Creating virtual environment...
-    python -m venv venv
+if not exist ".venv" (
+    echo [1/3] Creating virtual environment (.venv)...
+    python -m venv .venv
 ) else (
     echo [1/3] Virtual environment exists, skipping
 )
 
 echo [2/3] Activating virtual environment...
-call venv\Scripts\activate.bat
+call .venv\Scripts\activate.bat
 
-echo [3/3] Installing dependencies...
+echo [3/3] Installing backend dependencies...
+pip install -r backend\requirements.txt -q
 
-pip install -r requirements.txt -q
-
-if not exist "data\weights" mkdir data\weights
+if not exist "backend\data\weights" mkdir backend\data\weights
 
 echo.
 echo ============================================
