@@ -1,24 +1,30 @@
+import os
 import sys
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
 def _get_base_dir() -> Path:
+    """Return base directory: exe parent when frozen, else backend/ root."""
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent
-    return Path(__file__).parent.parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _is_frozen() -> bool:
+    return getattr(sys, 'frozen', False)
 
 
 class Settings(BaseSettings):
     APP_NAME: str = "VModule"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "3.1.0"
     HOST: str = "0.0.0.0"
-    PORT: int = 8100  # Different from VisFlowZ's 8000
-    DEBUG: bool = True
+    PORT: int = 8100
+    DEBUG: bool = not _is_frozen()
     BASE_DIR: Path = _get_base_dir()
-    DATA_DIR: Path = BASE_DIR / "data"
+    DATA_DIR: Path = Path(os.environ.get("VMODULE_DATA_DIR", str(BASE_DIR / "data")))
     WEIGHTS_DIR: Path = DATA_DIR / "weights"
-    DATABASE_URL: str = "sqlite+aiosqlite:///./vmodule.db"
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{DATA_DIR / 'vmodule.db'}"
     # PLC defaults
     DEFAULT_SCAN_CYCLE_MS: int = 20
     DEFAULT_MODBUS_TIMEOUT: float = 1.0

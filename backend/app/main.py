@@ -1,4 +1,5 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 
 from pathlib import Path
@@ -122,7 +123,11 @@ app.include_router(api_router)
 app.mount("/data", StaticFiles(directory=str(settings.DATA_DIR)), name="data")
 
 # -- SPA frontend serving --
-_FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+# In frozen (PyInstaller) mode, frontend dist is bundled as 'frontend_dist'
+if getattr(sys, 'frozen', False):
+    _FRONTEND_DIR = Path(sys._MEIPASS) / "frontend_dist"
+else:
+    _FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 logger.info(f"Frontend dist path: {_FRONTEND_DIR} (exists={_FRONTEND_DIR.is_dir()})")
 if _FRONTEND_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIR / "assets")), name="frontend-assets")
