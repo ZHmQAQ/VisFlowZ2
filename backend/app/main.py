@@ -19,6 +19,20 @@ from app.core.inference.manager import inference_manager
 
 logger = logging.getLogger("vmodule")
 
+
+# -- 静默高频轮询路径的 access log --
+class _QuietPollFilter(logging.Filter):
+    """过滤 engine/status、camera/list 等高频轮询的 access log"""
+    _QUIET = ("/api/plc/engine/status", "/api/camera/list", "/health")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(p in msg for p in self._QUIET)
+
+
+# 注入到 uvicorn.access logger（uvicorn 在 import 时就创建了该 logger）
+logging.getLogger("uvicorn.access").addFilter(_QuietPollFilter())
+
 # -- Global instances (populated during lifespan) --
 scan_engine: ScanEngine | None = None
 memory: SoftDeviceMemory | None = None

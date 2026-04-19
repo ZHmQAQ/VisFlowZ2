@@ -109,8 +109,12 @@ async function doConnect(name) {
   try {
     await connectPLC(name)
     ElMessage.success(`PLC [${name}] 已连接`)
+  } catch (e) {
+    const detail = e.response?.data?.detail || e.message || '连接失败'
+    ElMessage.error(`PLC [${name}] 连接失败: ${detail}`)
+  } finally {
     refresh()
-  } catch {}
+  }
 }
 
 async function doDisconnect(name) {
