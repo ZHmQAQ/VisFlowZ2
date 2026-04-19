@@ -81,13 +81,32 @@ class ModbusTCPClient:
         return self._tid
 
     async def connect(self):
-        """建立 TCP 连接"""
+        """建立 TCP 连接并验证 Modbus 通信"""
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self.config.host, self.config.port),
                 timeout=self.config.timeout,
             )
             self._connected = True
+            # 发送一个测试读取来验证对端是合法的 Modbus 从站
+            # 读保持寄存器 D0 (FC03, addr=0, count=1)
+            test_pdu = struct.pack(">BHH", 0x03, 0x0000, 0x0001)
+            try:
+                await self._transact(test_pdu)
+            except Exception as verify_err:
+                self._connected = False
+                if self._writer:
+                    try:
+                        self._writer.close()
+                        await self._writer.wait_closed()
+                    except Exception:
+                        pass
+                self._reader = None
+                self._writer = None
+                raise ConnectionError(
+                    f"TCP 连接成功但 Modbus 验证失败 "
+                    f"({self.config.host}:{self.config.port}): {verify_err}"
+                )
             logger.info(
                 f"[{self.config.name}] 已连接 "
                 f"{self.config.host}:{self.config.port} "

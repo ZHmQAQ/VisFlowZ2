@@ -107,7 +107,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Plus, Refresh, Edit, Delete } from '@element-plus/icons-vue'
-import { bulkReadDevice, writeDevice } from '../api'
+import { bulkReadDevice, writeDevice, listMappings, listChannels, listMultiframeChannels } from '../api'
 import { ElMessage } from 'element-plus'
 
 const STORAGE_KEY = 'vmodule_variables'
@@ -213,8 +213,64 @@ function toggleAuto(val) {
   }
 }
 
-onMounted(() => {
+function parseAddr(addr) {
+  const match = addr.match(/^([A-Z]+)(\d+)$/)
+  if (!match) return null
+  return { prefix: match[1], num: parseInt(match[2]) }
+}
+
+async function autoInitFromSystem() {
+  // 如果 localStorage 已有变量，不覆盖
+  if (variables.value.length > 0) return
+
+  const vars = []
+  const seen = new Set()
+
+  function addVar(name, addr, comment) {
+    const p = parseAddr(addr)
+    if (!p || seen.has(addr)) return
+    seen.add(addr)
+    vars.push({ name, prefix: p.prefix, num: p.num, comment, _value: null, _newValue: 0 })
+  }
+
+  try {
+    const [mappings, channels, mfChannels] = await Promise.all([
+      listMappings().catch(() => []),
+      listChannels().catch(() => []),
+      listMultiframeChannels().catch(() => []),
+    ])
+
+    // 从 I/O 映射中添加
+    for (const m of mappings) {
+      addVar(m.description || m.vmodule_addr, m.vmodule_addr, `${m.plc_name}:${m.plc_addr}`)
+    }
+
+    // 从检测通道中添加（补充映射中没有的地址，如 busy_addr）
+    for (const ch of channels) {
+      addVar(`${ch.name} 触发`, ch.trigger_addr, `检测通道 ${ch.name}`)
+      addVar(`${ch.name} 完成`, ch.done_addr, `检测通道 ${ch.name}`)
+      addVar(`${ch.name} 结果`, ch.result_addr, `检测通道 ${ch.name}`)
+      if (ch.defect_count_addr) addVar(`${ch.name} 缺陷数`, ch.defect_count_addr, `检测通道 ${ch.name}`)
+      if (ch.inference_time_addr) addVar(`${ch.name} 耗时`, ch.inference_time_addr, `检测通道 ${ch.name}`)
+    }
+
+    // 从多帧通道
+    for (const mf of mfChannels) {
+      addVar(`${mf.name} 命令`, mf.cmd_addr, `多帧通道 ${mf.name}`)
+      addVar(`${mf.name} 状态`, mf.status_addr, `多帧通道 ${mf.name}`)
+      addVar(`${mf.name} 结果`, mf.result_addr, `多帧通道 ${mf.name}`)
+    }
+
+    if (vars.length > 0) {
+      variables.value = vars
+      saveToStorage()
+    }
+  } catch {}
+}
+
+onMounted(async () => {
   loadFromStorage()
+  await autoInitFromSystem()
   refreshValues()
 })
 onUnmounted(() => { if (_timer) clearInterval(_timer) })
