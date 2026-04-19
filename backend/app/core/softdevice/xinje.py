@@ -193,29 +193,32 @@ class XinjeAddress:
         return best
 
 
+_io_mapping_counter = 0
+
+
+def _next_mapping_id() -> int:
+    global _io_mapping_counter
+    _io_mapping_counter += 1
+    return _io_mapping_counter
+
+
 @dataclass
 class IOMapping:
     """外部 I/O 映射条目 — VModule 软元件 ↔ PLC 软元件
 
-    一条映射定义了:
-      VModule 侧地址 (EX0/EY0/ED0/EW0 等)
-      PLC 侧地址 (M100/D1000 等)
-      方向: input (PLC→VModule) / output (VModule→PLC)
-      所属 PLC 连接名称
-
-    示例:
-      IOMapping(
-          vmodule_addr="EX0",
-          plc_addr="M100",
-          plc_name="1号机PLC",
-          description="工位1触发"
-      )
+    支持一对多: 同一 vmodule_addr 可映射到多个 plc_addr，
+    每条映射有唯一 id 用于管理。
     """
     vmodule_addr: str          # VModule 软元件地址 (如 "EX0")
     plc_addr: str              # 信捷 PLC 软元件地址 (如 "M100")
     plc_name: str              # PLC 连接名称
     description: str = ""      # 描述
     enabled: bool = True       # 是否启用（False 时扫描引擎跳过此映射）
+    id: int = 0                # 唯一标识（0 表示自动分配）
+
+    def __post_init__(self):
+        if self.id == 0:
+            self.id = _next_mapping_id()
 
     def get_xinje_address(self) -> XinjeAddress:
         """解析 PLC 侧地址"""

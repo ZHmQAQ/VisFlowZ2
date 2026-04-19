@@ -40,7 +40,7 @@
     </el-table>
 
     <div style="margin-top:12px;color:#8892b0;font-size:13px;">
-      共 {{ mappings.length }} 条映射 | ← 输入(PLC→VModule) | → 输出(VModule→PLC) | 点击行可编辑
+      共 {{ mappings.length }} 条映射 | ← 输入(PLC→VModule) | → 输出(VModule→PLC) | 点击行可编辑 | 支持一对多映射
     </div>
 
     <!-- 添加/编辑对话框 -->
@@ -60,22 +60,19 @@
         </el-form-item>
         <el-form-item label="VModule 地址">
           <div class="addr-input-row">
-            <el-select v-model="form.vmodule_prefix" style="width:130px" :disabled="isEdit">
+            <el-select v-model="form.vmodule_prefix" style="width:130px">
               <el-option label="EX (位入)" value="EX" />
               <el-option label="EY (位出)" value="EY" />
               <el-option label="ED (字入)" value="ED" />
               <el-option label="EW (字出)" value="EW" />
             </el-select>
-            <el-input-number v-model="form.vmodule_num" :min="0" :max="255" controls-position="right" style="flex:1" :disabled="isEdit" />
+            <el-input-number v-model="form.vmodule_num" :min="0" :max="255" controls-position="right" style="flex:1" />
           </div>
           <div class="addr-direction-hint">
             {{ ['EX','ED'].includes(form.vmodule_prefix)
                ? '← 输入方向：PLC 写入 → VModule 读取'
                : '→ 输出方向：VModule 写入 → PLC 读取' }}
           </div>
-          <span v-if="!isEdit && usedVModuleAddrs.has(form.vmodule_prefix + form.vmodule_num)" class="addr-warn">
-            该VModule地址已被映射
-          </span>
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="form.description" placeholder="如: 拍照触发信号" />
@@ -86,7 +83,8 @@
       <div style="font-size:12px;color:#8892b0;line-height:2;">
         <b>输入(PLC→VModule):</b> EX(位) / ED(字) &nbsp;
         <b>输出(VModule→PLC):</b> EY(位) / EW(字)<br>
-        <b>PLC 地址:</b> M(辅助继电器) D(数据寄存器) X/Y(输入/输出)
+        <b>PLC 地址:</b> M(辅助继电器) D(数据寄存器) X/Y(输入/输出)<br>
+        同一 VModule 地址可映射到多个 PLC 地址（一对多）
       </div>
 
       <template #footer>
@@ -98,7 +96,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { addMapping, listMappings, clearMappings, deleteMapping, updateMapping, toggleMapping, listPLC } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -108,7 +106,7 @@ const plcOptions = ref([])
 const showDialog = ref(false)
 const loading = ref(false)
 const isEdit = ref(false)
-const editingAddr = ref('')
+const editingId = ref(null)
 
 const defaultForm = () => ({
   plc_name: '', plc_addr: '',
@@ -116,10 +114,6 @@ const defaultForm = () => ({
   description: '',
 })
 const form = ref(defaultForm())
-
-const usedVModuleAddrs = computed(() =>
-  new Set(mappings.value.map(m => m.vmodule_addr.toUpperCase()))
-)
 
 async function refresh() {
   try { mappings.value = await listMappings() } catch {}
@@ -137,7 +131,7 @@ function parseAddr(addr) {
 
 function openAdd() {
   isEdit.value = false
-  editingAddr.value = ''
+  editingId.value = null
   const f = defaultForm()
   if (plcOptions.value.length) f.plc_name = plcOptions.value[0].name
   form.value = f
@@ -146,7 +140,7 @@ function openAdd() {
 
 function openEdit(row) {
   isEdit.value = true
-  editingAddr.value = row.vmodule_addr
+  editingId.value = row.id
   const parsed = parseAddr(row.vmodule_addr)
   form.value = {
     plc_name: row.plc_name,
@@ -168,7 +162,7 @@ async function doSubmit() {
       description: form.value.description,
     }
     if (isEdit.value) {
-      await updateMapping(editingAddr.value, payload)
+      await updateMapping(editingId.value, payload)
       ElMessage.success('映射已更新')
     } else {
       await addMapping(payload)
@@ -181,7 +175,7 @@ async function doSubmit() {
 
 async function doToggle(row) {
   try {
-    const res = await toggleMapping(row.vmodule_addr)
+    const res = await toggleMapping(row.id)
     row.enabled = res.enabled
   } catch {}
 }
@@ -191,8 +185,8 @@ function rowClass({ row }) {
 }
 
 async function doDelete(row) {
-  await ElMessageBox.confirm(`确认删除映射 [${row.vmodule_addr}]？`, '确认', { type: 'warning' })
-  await deleteMapping(row.vmodule_addr)
+  await ElMessageBox.confirm(`确认删除映射 [${row.vmodule_addr} ↔ ${row.plc_addr}]？`, '确认', { type: 'warning' })
+  await deleteMapping(row.id)
   ElMessage.success('映射已删除')
   refresh()
 }
@@ -219,11 +213,6 @@ onMounted(refresh)
   font-size: 12px;
   color: #8892b0;
   margin-top: 4px;
-}
-
-.addr-warn {
-  color: #ffa726;
-  font-size: 12px;
 }
 
 :deep(.el-table__row) {

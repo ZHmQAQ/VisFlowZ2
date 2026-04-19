@@ -171,7 +171,7 @@ async def add_mapping(req: IOMappingCreate):
         enabled=req.enabled,
     )
     engine.add_mapping(mapping)
-    return {"ok": True, "message": f"映射 {req.vmodule_addr} ↔ {req.plc_addr} 已添加"}
+    return {"ok": True, "id": mapping.id, "message": f"映射 {req.vmodule_addr} ↔ {req.plc_addr} 已添加"}
 
 
 @router.post("/mappings/batch", summary="批量添加 I/O 映射")
@@ -198,6 +198,7 @@ async def list_mappings():
     engine = _get_engine()
     return [
         {
+            "id": m.id,
             "plc_name": m.plc_name,
             "plc_addr": m.plc_addr,
             "vmodule_addr": m.vmodule_addr,
@@ -216,39 +217,39 @@ async def clear_mappings():
     return {"ok": True, "cleared": count}
 
 
-@router.delete("/mappings/{vmodule_addr}", summary="删除单条 I/O 映射")
-async def delete_mapping(vmodule_addr: str):
+@router.delete("/mappings/{mapping_id}", summary="按 ID 删除单条 I/O 映射")
+async def delete_mapping(mapping_id: int):
     engine = _get_engine()
     for i, m in enumerate(engine._io_mappings):
-        if m.vmodule_addr.upper() == vmodule_addr.upper():
+        if m.id == mapping_id:
             engine._io_mappings.pop(i)
-            return {"ok": True, "vmodule_addr": vmodule_addr}
-    raise HTTPException(404, f"映射 [{vmodule_addr}] 不存在")
+            return {"ok": True, "id": mapping_id}
+    raise HTTPException(404, f"映射 ID [{mapping_id}] 不存在")
 
 
-@router.put("/mappings/{vmodule_addr}", summary="编辑单条 I/O 映射")
-async def update_mapping(vmodule_addr: str, req: IOMappingCreate):
+@router.put("/mappings/{mapping_id}", summary="按 ID 编辑单条 I/O 映射")
+async def update_mapping(mapping_id: int, req: IOMappingCreate):
     from app.core.softdevice.xinje import IOMapping
     engine = _get_engine()
     for i, m in enumerate(engine._io_mappings):
-        if m.vmodule_addr.upper() == vmodule_addr.upper():
+        if m.id == mapping_id:
             engine._io_mappings[i] = IOMapping(
                 plc_name=req.plc_name, plc_addr=req.plc_addr,
                 vmodule_addr=req.vmodule_addr, description=req.description,
-                enabled=req.enabled,
+                enabled=req.enabled, id=mapping_id,
             )
-            return {"ok": True, "vmodule_addr": req.vmodule_addr}
-    raise HTTPException(404, f"映射 [{vmodule_addr}] 不存在")
+            return {"ok": True, "id": mapping_id}
+    raise HTTPException(404, f"映射 ID [{mapping_id}] 不存在")
 
 
-@router.patch("/mappings/{vmodule_addr}/toggle", summary="切换单条映射的启用/禁用")
-async def toggle_mapping(vmodule_addr: str):
+@router.patch("/mappings/{mapping_id}/toggle", summary="切换单条映射的启用/禁用")
+async def toggle_mapping(mapping_id: int):
     engine = _get_engine()
     for m in engine._io_mappings:
-        if m.vmodule_addr.upper() == vmodule_addr.upper():
+        if m.id == mapping_id:
             m.enabled = not m.enabled
-            return {"ok": True, "vmodule_addr": vmodule_addr, "enabled": m.enabled}
-    raise HTTPException(404, f"映射 [{vmodule_addr}] 不存在")
+            return {"ok": True, "id": mapping_id, "enabled": m.enabled}
+    raise HTTPException(404, f"映射 ID [{mapping_id}] 不存在")
 
 
 # ==================== 软元件读写（调试） ====================
@@ -426,7 +427,8 @@ async def save_preset():
 
     io_mappings = [
         {"plc_name": m.plc_name, "plc_addr": m.plc_addr,
-         "vmodule_addr": m.vmodule_addr, "description": m.description}
+         "vmodule_addr": m.vmodule_addr, "description": m.description,
+         "enabled": m.enabled}
         for m in engine._io_mappings
     ]
 
