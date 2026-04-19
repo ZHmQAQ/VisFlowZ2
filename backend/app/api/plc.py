@@ -36,6 +36,7 @@ class IOMappingCreate(BaseModel):
     plc_addr: str = Field(..., description="信捷 PLC 地址，如 'M100', 'D200', 'X0'")
     vmodule_addr: str = Field(..., description="VModule 地址，如 'EX0', 'ED10', 'EY5'")
     description: str = Field(default="", description="描述")
+    enabled: bool = Field(default=True, description="是否启用")
 
 
 class DeviceReadRequest(BaseModel):
@@ -167,6 +168,7 @@ async def add_mapping(req: IOMappingCreate):
         plc_addr=req.plc_addr,
         vmodule_addr=req.vmodule_addr,
         description=req.description,
+        enabled=req.enabled,
     )
     engine.add_mapping(mapping)
     return {"ok": True, "message": f"映射 {req.vmodule_addr} ↔ {req.plc_addr} 已添加"}
@@ -183,6 +185,7 @@ async def add_mappings_batch(mappings: List[IOMappingCreate]):
             plc_addr=m.plc_addr,
             vmodule_addr=m.vmodule_addr,
             description=m.description,
+            enabled=m.enabled,
         )
         for m in mappings
     ]
@@ -199,6 +202,7 @@ async def list_mappings():
             "plc_addr": m.plc_addr,
             "vmodule_addr": m.vmodule_addr,
             "description": m.description,
+            "enabled": m.enabled,
         }
         for m in engine._io_mappings
     ]
@@ -231,8 +235,19 @@ async def update_mapping(vmodule_addr: str, req: IOMappingCreate):
             engine._io_mappings[i] = IOMapping(
                 plc_name=req.plc_name, plc_addr=req.plc_addr,
                 vmodule_addr=req.vmodule_addr, description=req.description,
+                enabled=req.enabled,
             )
             return {"ok": True, "vmodule_addr": req.vmodule_addr}
+    raise HTTPException(404, f"映射 [{vmodule_addr}] 不存在")
+
+
+@router.patch("/mappings/{vmodule_addr}/toggle", summary="切换单条映射的启用/禁用")
+async def toggle_mapping(vmodule_addr: str):
+    engine = _get_engine()
+    for m in engine._io_mappings:
+        if m.vmodule_addr.upper() == vmodule_addr.upper():
+            m.enabled = not m.enabled
+            return {"ok": True, "vmodule_addr": vmodule_addr, "enabled": m.enabled}
     raise HTTPException(404, f"映射 [{vmodule_addr}] 不存在")
 
 

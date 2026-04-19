@@ -15,6 +15,7 @@ export const listMappings = () => request.get('/plc/mappings')
 export const clearMappings = () => request.delete('/plc/mappings')
 export const deleteMapping = (vmoduleAddr) => request.delete(`/plc/mappings/${vmoduleAddr}`)
 export const updateMapping = (vmoduleAddr, data) => request.put(`/plc/mappings/${vmoduleAddr}`, data)
+export const toggleMapping = (vmoduleAddr) => request.patch(`/plc/mappings/${vmoduleAddr}/toggle`)
 
 // ============ Soft Device ============
 export const readDevice = (address) => request.get(`/plc/device/${address}`)

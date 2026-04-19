@@ -269,7 +269,8 @@ class ScanEngine:
 
     async def _refresh_inputs(self):
         """从 PLC 读取输入软元件到 EX/ED"""
-        groups = IOBatch.group_mappings(self._io_mappings, is_input=True)
+        active = [m for m in self._io_mappings if m.enabled]
+        groups = IOBatch.group_mappings(active, is_input=True)
 
         for plc_name, type_groups in groups.items():
             client = self._plc_clients.get(plc_name)
@@ -296,7 +297,8 @@ class ScanEngine:
 
     async def _refresh_outputs(self):
         """将 EY/EW 写出到 PLC"""
-        groups = IOBatch.group_mappings(self._io_mappings, is_input=False)
+        active = [m for m in self._io_mappings if m.enabled]
+        groups = IOBatch.group_mappings(active, is_input=False)
 
         for plc_name, type_groups in groups.items():
             client = self._plc_clients.get(plc_name)

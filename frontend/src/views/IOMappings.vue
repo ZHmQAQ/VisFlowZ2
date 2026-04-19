@@ -8,7 +8,13 @@
       </div>
     </div>
 
-    <el-table :data="mappings" stripe @row-click="openEdit">
+    <el-table :data="mappings" stripe @row-click="openEdit" :row-class-name="rowClass">
+      <el-table-column label="启用" width="70" align="center">
+        <template #default="{ row }">
+          <el-switch :model-value="row.enabled" size="small"
+                     @click.stop @change="doToggle(row)" />
+        </template>
+      </el-table-column>
       <el-table-column prop="vmodule_addr" label="VModule 地址" width="140">
         <template #default="{ row }">
           <el-tag effect="dark" :type="row.vmodule_addr.startsWith('EX') || row.vmodule_addr.startsWith('ED') ? 'warning' : 'success'" size="small">
@@ -94,7 +100,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Plus, Delete } from '@element-plus/icons-vue'
-import { addMapping, listMappings, clearMappings, deleteMapping, updateMapping, listPLC } from '../api'
+import { addMapping, listMappings, clearMappings, deleteMapping, updateMapping, toggleMapping, listPLC } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const mappings = ref([])
@@ -173,6 +179,17 @@ async function doSubmit() {
   } finally { loading.value = false }
 }
 
+async function doToggle(row) {
+  try {
+    const res = await toggleMapping(row.vmodule_addr)
+    row.enabled = res.enabled
+  } catch {}
+}
+
+function rowClass({ row }) {
+  return row.enabled === false ? 'row-disabled' : ''
+}
+
 async function doDelete(row) {
   await ElMessageBox.confirm(`确认删除映射 [${row.vmodule_addr}]？`, '确认', { type: 'warning' })
   await deleteMapping(row.vmodule_addr)
@@ -211,5 +228,9 @@ onMounted(refresh)
 
 :deep(.el-table__row) {
   cursor: pointer;
+}
+
+:deep(.row-disabled) {
+  opacity: 0.45;
 }
 </style>

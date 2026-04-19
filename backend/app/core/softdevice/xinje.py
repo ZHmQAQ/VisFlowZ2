@@ -215,6 +215,7 @@ class IOMapping:
     plc_addr: str              # 信捷 PLC 软元件地址 (如 "M100")
     plc_name: str              # PLC 连接名称
     description: str = ""      # 描述
+    enabled: bool = True       # 是否启用（False 时扫描引擎跳过此映射）
 
     def get_xinje_address(self) -> XinjeAddress:
         """解析 PLC 侧地址"""
