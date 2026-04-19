@@ -13,6 +13,8 @@ export const addMapping = (data) => request.post('/plc/mappings', data)
 export const addMappingsBatch = (data) => request.post('/plc/mappings/batch', data)
 export const listMappings = () => request.get('/plc/mappings')
 export const clearMappings = () => request.delete('/plc/mappings')
+export const deleteMapping = (vmoduleAddr) => request.delete(`/plc/mappings/${vmoduleAddr}`)
+export const updateMapping = (vmoduleAddr, data) => request.put(`/plc/mappings/${vmoduleAddr}`, data)
 
 // ============ Soft Device ============
 export const readDevice = (address) => request.get(`/plc/device/${address}`)

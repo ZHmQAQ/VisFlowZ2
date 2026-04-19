@@ -8,7 +8,7 @@
       </div>
     </div>
 
-    <el-table :data="mappings" stripe>
+    <el-table :data="mappings" stripe @row-click="openEdit">
       <el-table-column prop="vmodule_addr" label="VModule 地址" width="140">
         <template #default="{ row }">
           <el-tag effect="dark" :type="row.vmodule_addr.startsWith('EX') || row.vmodule_addr.startsWith('ED') ? 'warning' : 'success'" size="small">
@@ -24,14 +24,21 @@
       <el-table-column prop="plc_addr" label="PLC 地址" width="120" />
       <el-table-column prop="plc_name" label="PLC 名称" width="120" />
       <el-table-column prop="description" label="描述" />
+      <el-table-column label="操作" width="80" align="center">
+        <template #default="{ row }">
+          <el-button size="small" type="danger" text @click.stop="doDelete(row)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </template>
+      </el-table-column>
     </el-table>
 
     <div style="margin-top:12px;color:#8892b0;font-size:13px;">
-      共 {{ mappings.length }} 条映射 | ← 输入(PLC→VModule) | → 输出(VModule→PLC)
+      共 {{ mappings.length }} 条映射 | ← 输入(PLC→VModule) | → 输出(VModule→PLC) | 点击行可编辑
     </div>
 
-    <!-- 添加对话框 -->
-    <el-dialog v-model="showAdd" title="添加 I/O 映射" width="500" :close-on-click-modal="false">
+    <!-- 添加/编辑对话框 -->
+    <el-dialog v-model="showDialog" :title="isEdit ? '编辑 I/O 映射' : '添加 I/O 映射'" width="500" :close-on-click-modal="false">
       <el-form :model="form" label-width="110px">
         <el-form-item label="PLC 名称">
           <el-select v-model="form.plc_name" style="width:100%"
@@ -47,20 +54,20 @@
         </el-form-item>
         <el-form-item label="VModule 地址">
           <div class="addr-input-row">
-            <el-select v-model="form.vmodule_prefix" style="width:130px">
+            <el-select v-model="form.vmodule_prefix" style="width:130px" :disabled="isEdit">
               <el-option label="EX (位入)" value="EX" />
               <el-option label="EY (位出)" value="EY" />
               <el-option label="ED (字入)" value="ED" />
               <el-option label="EW (字出)" value="EW" />
             </el-select>
-            <el-input-number v-model="form.vmodule_num" :min="0" :max="255" controls-position="right" style="flex:1" />
+            <el-input-number v-model="form.vmodule_num" :min="0" :max="255" controls-position="right" style="flex:1" :disabled="isEdit" />
           </div>
           <div class="addr-direction-hint">
             {{ ['EX','ED'].includes(form.vmodule_prefix)
                ? '← 输入方向：PLC 写入 → VModule 读取'
                : '→ 输出方向：VModule 写入 → PLC 读取' }}
           </div>
-          <span v-if="usedVModuleAddrs.has(form.vmodule_prefix + form.vmodule_num)" class="addr-warn">
+          <span v-if="!isEdit && usedVModuleAddrs.has(form.vmodule_prefix + form.vmodule_num)" class="addr-warn">
             该VModule地址已被映射
           </span>
         </el-form-item>
@@ -77,8 +84,8 @@
       </div>
 
       <template #footer>
-        <el-button @click="showAdd = false">取消</el-button>
-        <el-button type="primary" :loading="loading" @click="doAdd">添加</el-button>
+        <el-button @click="showDialog = false">取消</el-button>
+        <el-button type="primary" :loading="loading" @click="doSubmit">{{ isEdit ? '保存' : '添加' }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -86,14 +93,16 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
-import { addMapping, listMappings, clearMappings, listPLC } from '../api'
+import { Plus, Delete } from '@element-plus/icons-vue'
+import { addMapping, listMappings, clearMappings, deleteMapping, updateMapping, listPLC } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const mappings = ref([])
 const plcOptions = ref([])
-const showAdd = ref(false)
+const showDialog = ref(false)
 const loading = ref(false)
+const isEdit = ref(false)
+const editingAddr = ref('')
 
 const defaultForm = () => ({
   plc_name: '', plc_addr: '',
@@ -111,20 +120,39 @@ async function refresh() {
   try {
     const data = await listPLC()
     plcOptions.value = Object.entries(data).map(([name, info]) => ({ name, host: info.host }))
-    if (plcOptions.value.length && !form.value.plc_name) {
-      form.value.plc_name = plcOptions.value[0].name
-    }
   } catch {}
 }
 
+function parseAddr(addr) {
+  const match = addr.match(/^(EX|EY|ED|EW)(\d+)$/i)
+  if (match) return { prefix: match[1].toUpperCase(), num: parseInt(match[2]) }
+  return { prefix: 'EX', num: 0 }
+}
+
 function openAdd() {
+  isEdit.value = false
+  editingAddr.value = ''
   const f = defaultForm()
   if (plcOptions.value.length) f.plc_name = plcOptions.value[0].name
   form.value = f
-  showAdd.value = true
+  showDialog.value = true
 }
 
-async function doAdd() {
+function openEdit(row) {
+  isEdit.value = true
+  editingAddr.value = row.vmodule_addr
+  const parsed = parseAddr(row.vmodule_addr)
+  form.value = {
+    plc_name: row.plc_name,
+    plc_addr: row.plc_addr,
+    vmodule_prefix: parsed.prefix,
+    vmodule_num: parsed.num,
+    description: row.description,
+  }
+  showDialog.value = true
+}
+
+async function doSubmit() {
   loading.value = true
   try {
     const payload = {
@@ -133,11 +161,23 @@ async function doAdd() {
       vmodule_addr: form.value.vmodule_prefix + form.value.vmodule_num,
       description: form.value.description,
     }
-    await addMapping(payload)
-    ElMessage.success('映射已添加')
-    showAdd.value = false
+    if (isEdit.value) {
+      await updateMapping(editingAddr.value, payload)
+      ElMessage.success('映射已更新')
+    } else {
+      await addMapping(payload)
+      ElMessage.success('映射已添加')
+    }
+    showDialog.value = false
     refresh()
   } finally { loading.value = false }
+}
+
+async function doDelete(row) {
+  await ElMessageBox.confirm(`确认删除映射 [${row.vmodule_addr}]？`, '确认', { type: 'warning' })
+  await deleteMapping(row.vmodule_addr)
+  ElMessage.success('映射已删除')
+  refresh()
 }
 
 async function doClear() {
@@ -167,5 +207,9 @@ onMounted(refresh)
 .addr-warn {
   color: #ffa726;
   font-size: 12px;
+}
+
+:deep(.el-table__row) {
+  cursor: pointer;
 }
 </style>

@@ -1,6 +1,6 @@
 {
   "name": "dual_daheng_3frame",
-  "description": "Two Daheng GigE cameras, 3 frames each. Cam1: D30/D31, Cam2: D40/D41. Strategy result: D33/D43.",
+  "description": "Two Daheng GigE cameras, 3 virtual cameras each (different exposures). 6 single-frame detection channels.",
 
   "plc_connections": [
     {
@@ -13,64 +13,155 @@
   ],
 
   "io_mappings": [
-    {"plc_name": "PLC1", "plc_addr": "D30",  "vmodule_addr": "ED0",  "description": "Cam1 command: 1/2/3=capture frame N"},
-    {"plc_name": "PLC1", "plc_addr": "D31",  "vmodule_addr": "EW0",  "description": "Cam1 status: 11/12/13=frameN done, 20=inferring, 0=idle"},
-    {"plc_name": "PLC1", "plc_addr": "D32",  "vmodule_addr": "EW1",  "description": "Cam1 defect count"},
-    {"plc_name": "PLC1", "plc_addr": "D33",  "vmodule_addr": "EW2",  "description": "Cam1 strategy result: 1=OK 2=repairable 3=unrepairable"},
-    {"plc_name": "PLC1", "plc_addr": "D34",  "vmodule_addr": "EW3",  "description": "Cam1 inference time ms"},
+    {"plc_name": "PLC1", "plc_addr": "M100", "vmodule_addr": "EX0",  "description": "Cam1-Exp1 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M101", "vmodule_addr": "EX1",  "description": "Cam1-Exp2 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M102", "vmodule_addr": "EX2",  "description": "Cam1-Exp3 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M110", "vmodule_addr": "EX10", "description": "Cam2-Exp1 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M111", "vmodule_addr": "EX11", "description": "Cam2-Exp2 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M112", "vmodule_addr": "EX12", "description": "Cam2-Exp3 触发"},
 
-    {"plc_name": "PLC1", "plc_addr": "D40",  "vmodule_addr": "ED10", "description": "Cam2 command: 1/2/3=capture frame N"},
-    {"plc_name": "PLC1", "plc_addr": "D41",  "vmodule_addr": "EW10", "description": "Cam2 status: 11/12/13=frameN done, 20=inferring, 0=idle"},
-    {"plc_name": "PLC1", "plc_addr": "D42",  "vmodule_addr": "EW11", "description": "Cam2 defect count"},
-    {"plc_name": "PLC1", "plc_addr": "D43",  "vmodule_addr": "EW12", "description": "Cam2 strategy result: 1=OK 2=repairable 3=unrepairable"},
-    {"plc_name": "PLC1", "plc_addr": "D44",  "vmodule_addr": "EW13", "description": "Cam2 inference time ms"}
+    {"plc_name": "PLC1", "plc_addr": "M200", "vmodule_addr": "EY0",  "description": "Cam1-Exp1 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M201", "vmodule_addr": "EY1",  "description": "Cam1-Exp1 OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M202", "vmodule_addr": "EY2",  "description": "Cam1-Exp2 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M203", "vmodule_addr": "EY3",  "description": "Cam1-Exp2 OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M204", "vmodule_addr": "EY4",  "description": "Cam1-Exp3 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M205", "vmodule_addr": "EY5",  "description": "Cam1-Exp3 OK/NG"},
+
+    {"plc_name": "PLC1", "plc_addr": "M210", "vmodule_addr": "EY10", "description": "Cam2-Exp1 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M211", "vmodule_addr": "EY11", "description": "Cam2-Exp1 OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M212", "vmodule_addr": "EY12", "description": "Cam2-Exp2 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M213", "vmodule_addr": "EY13", "description": "Cam2-Exp2 OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M214", "vmodule_addr": "EY14", "description": "Cam2-Exp3 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M215", "vmodule_addr": "EY15", "description": "Cam2-Exp3 OK/NG"},
+
+    {"plc_name": "PLC1", "plc_addr": "D30",  "vmodule_addr": "EW0",  "description": "Cam1-Exp1 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D31",  "vmodule_addr": "EW1",  "description": "Cam1-Exp1 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D32",  "vmodule_addr": "EW2",  "description": "Cam1-Exp2 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D33",  "vmodule_addr": "EW3",  "description": "Cam1-Exp2 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D34",  "vmodule_addr": "EW4",  "description": "Cam1-Exp3 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D35",  "vmodule_addr": "EW5",  "description": "Cam1-Exp3 推理耗时ms"},
+
+    {"plc_name": "PLC1", "plc_addr": "D40",  "vmodule_addr": "EW10", "description": "Cam2-Exp1 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D41",  "vmodule_addr": "EW11", "description": "Cam2-Exp1 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D42",  "vmodule_addr": "EW12", "description": "Cam2-Exp2 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D43",  "vmodule_addr": "EW13", "description": "Cam2-Exp2 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D44",  "vmodule_addr": "EW14", "description": "Cam2-Exp3 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D45",  "vmodule_addr": "EW15", "description": "Cam2-Exp3 推理耗时ms"}
   ],
 
-  "detection_channels": [],
-
-  "multiframe_channels": [
+  "detection_channels": [
     {
-      "name": "Cam1-3Frame",
-      "camera_id": "daheng_cam1",
+      "name": "Cam1-Exp1",
+      "camera_id": "daheng_cam1_exp1",
       "model_id": "yolo_default",
-      "frame_count": 3,
-      "cmd_addr": "ED0",
-      "status_addr": "EW0",
-      "result_addr": "EW2",
-      "count_addr": "EW1",
-      "time_addr": "EW3"
+      "trigger_addr": "EX0",
+      "busy_addr": "VM100",
+      "done_addr": "EY0",
+      "result_addr": "EY1",
+      "defect_count_addr": "EW0",
+      "inference_time_addr": "EW1"
     },
     {
-      "name": "Cam2-3Frame",
-      "camera_id": "daheng_cam2",
+      "name": "Cam1-Exp2",
+      "camera_id": "daheng_cam1_exp2",
       "model_id": "yolo_default",
-      "frame_count": 3,
-      "cmd_addr": "ED10",
-      "status_addr": "EW10",
-      "result_addr": "EW12",
-      "count_addr": "EW11",
-      "time_addr": "EW13"
+      "trigger_addr": "EX1",
+      "busy_addr": "VM101",
+      "done_addr": "EY2",
+      "result_addr": "EY3",
+      "defect_count_addr": "EW2",
+      "inference_time_addr": "EW3"
+    },
+    {
+      "name": "Cam1-Exp3",
+      "camera_id": "daheng_cam1_exp3",
+      "model_id": "yolo_default",
+      "trigger_addr": "EX2",
+      "busy_addr": "VM102",
+      "done_addr": "EY4",
+      "result_addr": "EY5",
+      "defect_count_addr": "EW4",
+      "inference_time_addr": "EW5"
+    },
+    {
+      "name": "Cam2-Exp1",
+      "camera_id": "daheng_cam2_exp1",
+      "model_id": "yolo_default",
+      "trigger_addr": "EX10",
+      "busy_addr": "VM110",
+      "done_addr": "EY10",
+      "result_addr": "EY11",
+      "defect_count_addr": "EW10",
+      "inference_time_addr": "EW11"
+    },
+    {
+      "name": "Cam2-Exp2",
+      "camera_id": "daheng_cam2_exp2",
+      "model_id": "yolo_default",
+      "trigger_addr": "EX11",
+      "busy_addr": "VM111",
+      "done_addr": "EY12",
+      "result_addr": "EY13",
+      "defect_count_addr": "EW12",
+      "inference_time_addr": "EW13"
+    },
+    {
+      "name": "Cam2-Exp3",
+      "camera_id": "daheng_cam2_exp3",
+      "model_id": "yolo_default",
+      "trigger_addr": "EX12",
+      "busy_addr": "VM112",
+      "done_addr": "EY14",
+      "result_addr": "EY15",
+      "defect_count_addr": "EW14",
+      "inference_time_addr": "EW15"
     }
   ],
 
+  "multiframe_channels": [],
+
   "cameras": [
     {
-      "camera_id": "daheng_cam1",
+      "camera_id": "daheng_cam1_exp1",
       "camera_type": "daheng",
-      "config": {
-        "serial_number": "CHANGE_ME_CAM1",
-        "exposure": 10000,
-        "gain": 1.0
-      }
+      "config": { "serial_number": "CHANGE_ME_CAM1" },
+      "exposure": 5000,
+      "gain": 1.0
     },
     {
-      "camera_id": "daheng_cam2",
+      "camera_id": "daheng_cam1_exp2",
       "camera_type": "daheng",
-      "config": {
-        "serial_number": "CHANGE_ME_CAM2",
-        "exposure": 10000,
-        "gain": 1.0
-      }
+      "config": { "serial_number": "CHANGE_ME_CAM1" },
+      "exposure": 15000,
+      "gain": 2.0
+    },
+    {
+      "camera_id": "daheng_cam1_exp3",
+      "camera_type": "daheng",
+      "config": { "serial_number": "CHANGE_ME_CAM1" },
+      "exposure": 30000,
+      "gain": 3.0
+    },
+    {
+      "camera_id": "daheng_cam2_exp1",
+      "camera_type": "daheng",
+      "config": { "serial_number": "CHANGE_ME_CAM2" },
+      "exposure": 5000,
+      "gain": 1.0
+    },
+    {
+      "camera_id": "daheng_cam2_exp2",
+      "camera_type": "daheng",
+      "config": { "serial_number": "CHANGE_ME_CAM2" },
+      "exposure": 15000,
+      "gain": 2.0
+    },
+    {
+      "camera_id": "daheng_cam2_exp3",
+      "camera_type": "daheng",
+      "config": { "serial_number": "CHANGE_ME_CAM2" },
+      "exposure": 30000,
+      "gain": 3.0
     }
   ],
 

@@ -7,7 +7,7 @@
 
     <!-- 通道卡片 -->
     <div class="channel-grid">
-      <el-card v-for="ch in channels" :key="ch.name" class="channel-card">
+      <el-card v-for="ch in channels" :key="ch.name" class="channel-card" @click="openEdit(ch)">
         <template #header>
           <div class="channel-header">
             <span>{{ ch.name }}</span>

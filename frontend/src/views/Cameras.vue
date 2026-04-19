@@ -29,6 +29,9 @@
             <el-button size="small" type="primary" :disabled="!cam.is_open" @click="doCapture(cam.camera_id)">
               拍照
             </el-button>
+            <el-button size="small" type="primary" text @click.stop="openEditDialog(cam)">
+              <el-icon><Edit /></el-icon>
+            </el-button>
             <el-button size="small" type="danger" text @click="doRemove(cam.camera_id)">
               <el-icon><Delete /></el-icon>
             </el-button>
@@ -109,15 +112,36 @@
         <el-button type="primary" :loading="loading" @click="doAdd">添加</el-button>
       </template>
     </el-dialog>
+
+    <!-- Edit dialog -->
+    <el-dialog v-model="showEdit" title="编辑相机参数" width="420" :close-on-click-modal="false">
+      <el-form :model="editForm" label-width="100px">
+        <el-form-item label="相机 ID">
+          <el-input :model-value="editForm.camera_id" disabled />
+        </el-form-item>
+        <el-form-item label="曝光时间">
+          <el-input-number v-model="editForm.exposure" :min="1" :max="1000000" :step="1000" controls-position="right" style="width:200px" />
+          <span style="margin-left:8px;color:#8892b0;font-size:12px">μs</span>
+        </el-form-item>
+        <el-form-item label="增益">
+          <el-input-number v-model="editForm.gain" :min="0" :max="30" :step="0.1" :precision="1" controls-position="right" style="width:200px" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEdit = false">取消</el-button>
+        <el-button type="primary" :loading="editLoading" @click="doEditSave">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { Plus, Delete } from '@element-plus/icons-vue'
+import { Plus, Delete, Edit } from '@element-plus/icons-vue'
 import {
   addCamera, removeCamera, listCameras,
   openCamera, closeCamera, captureFrame, getFrameUrl,
+  updateCameraConfig,
 } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -139,9 +163,35 @@ const defaultForm = () => ({
 })
 const form = ref(defaultForm())
 
+const showEdit = ref(false)
+const editLoading = ref(false)
+const editForm = ref({ camera_id: '', exposure: 10000, gain: 1.0 })
+
 function openAddDialog() {
   form.value = defaultForm()
   showAdd.value = true
+}
+
+function openEditDialog(cam) {
+  editForm.value = {
+    camera_id: cam.camera_id,
+    exposure: cam.exposure || 10000,
+    gain: cam.gain ?? 1.0,
+  }
+  showEdit.value = true
+}
+
+async function doEditSave() {
+  editLoading.value = true
+  try {
+    await updateCameraConfig(editForm.value.camera_id, {
+      exposure: editForm.value.exposure,
+      gain: editForm.value.gain,
+    })
+    ElMessage.success(`相机 [${editForm.value.camera_id}] 参数已更新`)
+    showEdit.value = false
+    refresh()
+  } finally { editLoading.value = false }
 }
 
 async function refresh() {

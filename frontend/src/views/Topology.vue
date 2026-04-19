@@ -9,7 +9,8 @@
       <!-- 4 列布局 -->
       <div class="topo-column">
         <div class="topo-col-title">PLC 连接</div>
-        <div v-for="plc in plcList" :key="plc.name" :ref="el => setNodeRef('plc', plc.name, el)"
+        <div v-for="plc in plcList" :key="plc.name"
+             :data-topo="'plc:'+plc.name"
              class="topo-node plc-node" @click="$router.push('/plc')">
           <div class="topo-node-title">
             <span class="status-dot" :class="plc.connected ? 'online' : 'offline'" />
@@ -23,7 +24,7 @@
       <div class="topo-column">
         <div class="topo-col-title">I/O 映射</div>
         <div v-for="(group, plcName) in mappingGroups" :key="plcName"
-             :ref="el => setNodeRef('mapping', plcName, el)"
+             :data-topo="'mapping:'+plcName"
              class="topo-node mapping-node" @click="$router.push('/mappings')">
           <div class="topo-node-title">{{ plcName }}</div>
           <div v-for="m in group.slice(0, 6)" :key="m.vmodule_addr" class="topo-mapping-line">
@@ -38,7 +39,8 @@
 
       <div class="topo-column">
         <div class="topo-col-title">检测通道</div>
-        <div v-for="ch in channels" :key="ch.name" :ref="el => setNodeRef('channel', ch.name, el)"
+        <div v-for="ch in channels" :key="ch.name"
+             :data-topo="'channel:'+ch.name"
              class="topo-node channel-node" @click="$router.push('/detection')">
           <div class="topo-node-title">{{ ch.name }}</div>
           <div class="topo-node-detail">触发: {{ ch.trigger_addr }}</div>
@@ -46,7 +48,7 @@
           <div class="topo-node-detail">模型: {{ ch.model_id }}</div>
         </div>
         <div v-for="mf in multiframeChannels" :key="'mf-'+mf.name"
-             :ref="el => setNodeRef('channel', 'mf-'+mf.name, el)"
+             :data-topo="'channel:mf-'+mf.name"
              class="topo-node channel-node mf" @click="$router.push('/detection')">
           <div class="topo-node-title">{{ mf.name }} <el-tag size="small" type="warning">多帧</el-tag></div>
           <div class="topo-node-detail">命令: {{ mf.cmd_addr }}</div>
@@ -58,7 +60,8 @@
 
       <div class="topo-column">
         <div class="topo-col-title">相机 / 模型</div>
-        <div v-for="cam in cameras" :key="cam.camera_id" :ref="el => setNodeRef('camera', cam.camera_id, el)"
+        <div v-for="cam in cameras" :key="cam.camera_id"
+             :data-topo="'camera:'+cam.camera_id"
              class="topo-node camera-node" @click="$router.push('/cameras')">
           <div class="topo-node-title">
             <span class="status-dot" :class="cam.is_open ? 'online' : 'offline'" />
@@ -66,7 +69,8 @@
           </div>
           <div class="topo-node-detail">{{ cam.camera_type }} | {{ cam.exposure }}μs</div>
         </div>
-        <div v-for="model in models" :key="model.model_id" :ref="el => setNodeRef('model', model.model_id, el)"
+        <div v-for="model in models" :key="model.model_id"
+             :data-topo="'model:'+model.model_id"
              class="topo-node model-node" @click="$router.push('/models')">
           <div class="topo-node-title">{{ model.model_id }}</div>
           <div class="topo-node-detail">{{ model.engine || '推理引擎' }}</div>
@@ -75,17 +79,25 @@
       </div>
 
       <!-- SVG 连线层 -->
-      <svg class="topo-svg" :width="svgW" :height="svgH">
+      <svg class="topo-svg" ref="svgRef">
         <path v-for="(line, i) in lines" :key="i"
               :d="line.d" :stroke="line.color" stroke-width="2" fill="none"
               stroke-dasharray="6,3" opacity="0.6" />
       </svg>
     </div>
+
+    <div style="margin-top:12px;color:#8892b0;font-size:12px;">
+      <span style="display:inline-block;width:12px;height:3px;background:#4fc3f7;margin-right:4px;vertical-align:middle"></span>PLC↔映射 &nbsp;
+      <span style="display:inline-block;width:12px;height:3px;background:#66bb6a;margin-right:4px;vertical-align:middle"></span>映射→通道 &nbsp;
+      <span style="display:inline-block;width:12px;height:3px;background:#ffa726;margin-right:4px;vertical-align:middle"></span>多帧通道 &nbsp;
+      <span style="display:inline-block;width:12px;height:3px;background:#ab47bc;margin-right:4px;vertical-align:middle"></span>通道→模型 &nbsp;
+      共 {{ lines.length }} 条连线
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import {
   listPLC, listMappings, listChannels, listMultiframeChannels,
@@ -103,17 +115,16 @@ const models = ref([])
 const mappingGroups = ref({})
 
 const topoRef = ref(null)
-const nodeRefs = reactive({})
+const svgRef = ref(null)
 const lines = ref([])
-const svgW = ref(1200)
-const svgH = ref(600)
 
 function isInput(addr) {
   return addr.startsWith('EX') || addr.startsWith('ED')
 }
 
-function setNodeRef(type, id, el) {
-  if (el) nodeRefs[`${type}:${id}`] = el
+function getNode(topoId) {
+  if (!topoRef.value) return null
+  return topoRef.value.querySelector(`[data-topo="${topoId}"]`)
 }
 
 async function refresh() {
@@ -140,7 +151,8 @@ async function refresh() {
     mappingGroups.value = groups
 
     await nextTick()
-    drawLines()
+    // 额外延迟确保布局完成
+    setTimeout(drawLines, 150)
   } catch {}
   loading.value = false
 }
@@ -149,6 +161,7 @@ function getCenter(el) {
   if (!el || !topoRef.value) return null
   const containerRect = topoRef.value.getBoundingClientRect()
   const rect = el.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) return null
   return {
     x: rect.left - containerRect.left + rect.width / 2,
     y: rect.top - containerRect.top + rect.height / 2,
@@ -160,14 +173,20 @@ function getCenter(el) {
 function drawLines() {
   const result = []
   if (!topoRef.value) return
+
+  // 更新 SVG 尺寸
   const containerRect = topoRef.value.getBoundingClientRect()
-  svgW.value = containerRect.width
-  svgH.value = containerRect.height
+  if (svgRef.value) {
+    svgRef.value.setAttribute('width', containerRect.width)
+    svgRef.value.setAttribute('height', containerRect.height)
+  }
 
   // PLC -> Mapping groups (by plc_name)
   for (const plc of plcList.value) {
-    const from = getCenter(nodeRefs[`plc:${plc.name}`])
-    const to = getCenter(nodeRefs[`mapping:${plc.name}`])
+    const fromEl = getNode(`plc:${plc.name}`)
+    const toEl = getNode(`mapping:${plc.name}`)
+    const from = getCenter(fromEl)
+    const to = getCenter(toEl)
     if (from && to) {
       result.push({ d: bezier(from.right, from.y, to.left, to.y), color: '#4fc3f7' })
     }
@@ -175,12 +194,13 @@ function drawLines() {
 
   // Mapping groups -> Channels (by vmodule_addr match)
   for (const ch of channels.value) {
-    // Find which mapping group contains the trigger_addr
     for (const [plcName, group] of Object.entries(mappingGroups.value)) {
-      const match = group.some(m => m.vmodule_addr === ch.trigger_addr)
+      const match = group.some(m => m.vmodule_addr.toUpperCase() === ch.trigger_addr.toUpperCase())
       if (match) {
-        const from = getCenter(nodeRefs[`mapping:${plcName}`])
-        const to = getCenter(nodeRefs[`channel:${ch.name}`])
+        const fromEl = getNode(`mapping:${plcName}`)
+        const toEl = getNode(`channel:${ch.name}`)
+        const from = getCenter(fromEl)
+        const to = getCenter(toEl)
         if (from && to) {
           result.push({ d: bezier(from.right, from.y, to.left, to.y), color: '#66bb6a' })
         }
@@ -191,10 +211,12 @@ function drawLines() {
 
   for (const mf of multiframeChannels.value) {
     for (const [plcName, group] of Object.entries(mappingGroups.value)) {
-      const match = group.some(m => m.vmodule_addr === mf.cmd_addr)
+      const match = group.some(m => m.vmodule_addr.toUpperCase() === mf.cmd_addr.toUpperCase())
       if (match) {
-        const from = getCenter(nodeRefs[`mapping:${plcName}`])
-        const to = getCenter(nodeRefs[`channel:mf-${mf.name}`])
+        const fromEl = getNode(`mapping:${plcName}`)
+        const toEl = getNode(`channel:mf-${mf.name}`)
+        const from = getCenter(fromEl)
+        const to = getCenter(toEl)
         if (from && to) {
           result.push({ d: bezier(from.right, from.y, to.left, to.y), color: '#ffa726' })
         }
@@ -209,13 +231,16 @@ function drawLines() {
     ...multiframeChannels.value.map(c => ({ key: `channel:mf-${c.name}`, camera_id: c.camera_id, model_id: c.model_id })),
   ]
   for (const ch of allChs) {
-    const from = getCenter(nodeRefs[ch.key])
+    const fromEl = getNode(ch.key)
+    const from = getCenter(fromEl)
     if (!from) continue
-    const toCam = getCenter(nodeRefs[`camera:${ch.camera_id}`])
+    const toCamEl = getNode(`camera:${ch.camera_id}`)
+    const toCam = getCenter(toCamEl)
     if (toCam) {
       result.push({ d: bezier(from.right, from.y, toCam.left, toCam.y), color: '#4fc3f7' })
     }
-    const toModel = getCenter(nodeRefs[`model:${ch.model_id}`])
+    const toModelEl = getNode(`model:${ch.model_id}`)
+    const toModel = getCenter(toModelEl)
     if (toModel) {
       result.push({ d: bezier(from.right, from.y, toModel.left, toModel.y), color: '#ab47bc' })
     }
@@ -229,7 +254,20 @@ function bezier(x1, y1, x2, y2) {
   return `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`
 }
 
-onMounted(refresh)
+let _resizeObserver = null
+
+onMounted(() => {
+  refresh()
+  // 监听容器尺寸变化
+  if (topoRef.value && typeof ResizeObserver !== 'undefined') {
+    _resizeObserver = new ResizeObserver(() => drawLines())
+    _resizeObserver.observe(topoRef.value)
+  }
+})
+
+onUnmounted(() => {
+  if (_resizeObserver) _resizeObserver.disconnect()
+})
 </script>
 
 <style scoped lang="scss">
@@ -237,7 +275,7 @@ onMounted(refresh)
   position: relative;
   display: flex;
   gap: 24px;
-  min-height: calc(100vh - 160px);
+  min-height: calc(100vh - 200px);
   padding: 16px 0;
 }
 
@@ -245,8 +283,11 @@ onMounted(refresh)
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 0;
+  overflow: visible;
 }
 
 .topo-column {

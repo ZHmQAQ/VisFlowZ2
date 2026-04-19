@@ -212,6 +212,30 @@ async def clear_mappings():
     return {"ok": True, "cleared": count}
 
 
+@router.delete("/mappings/{vmodule_addr}", summary="删除单条 I/O 映射")
+async def delete_mapping(vmodule_addr: str):
+    engine = _get_engine()
+    for i, m in enumerate(engine._io_mappings):
+        if m.vmodule_addr.upper() == vmodule_addr.upper():
+            engine._io_mappings.pop(i)
+            return {"ok": True, "vmodule_addr": vmodule_addr}
+    raise HTTPException(404, f"映射 [{vmodule_addr}] 不存在")
+
+
+@router.put("/mappings/{vmodule_addr}", summary="编辑单条 I/O 映射")
+async def update_mapping(vmodule_addr: str, req: IOMappingCreate):
+    from app.core.softdevice.xinje import IOMapping
+    engine = _get_engine()
+    for i, m in enumerate(engine._io_mappings):
+        if m.vmodule_addr.upper() == vmodule_addr.upper():
+            engine._io_mappings[i] = IOMapping(
+                plc_name=req.plc_name, plc_addr=req.plc_addr,
+                vmodule_addr=req.vmodule_addr, description=req.description,
+            )
+            return {"ok": True, "vmodule_addr": req.vmodule_addr}
+    raise HTTPException(404, f"映射 [{vmodule_addr}] 不存在")
+
+
 # ==================== 软元件读写（调试） ====================
 
 @router.get("/device/{address}", summary="读取软元件")
@@ -342,10 +366,15 @@ async def load_preset(preset: PresetConfig):
     # 5. Cameras
     cam_count = 0
     for cam in preset.cameras:
+        config = {**cam.get("config", {})}
+        if "exposure" in cam:
+            config["exposure"] = cam["exposure"]
+        if "gain" in cam:
+            config["gain"] = cam["gain"]
         ok = await camera_manager.add_camera(
             cam.get("camera_id", ""),
             cam.get("camera_type", "usb"),
-            cam.get("config", {}),
+            config,
         )
         if ok:
             cam_count += 1
