@@ -72,3 +72,11 @@ export const updateEngineConfig = (data) => request.put('/plc/engine/config', da
 
 // ============ Health ============
 export const getHealth = () => request.get('/health', { baseURL: '' })
+
+// ============ System ============
+export const getLogLevel = () => request.get('/system/log-level')
+export const setLogLevel = (level) => request.put('/system/log-level', { level })
+export const getSystemSettings = () => request.get('/system/settings')
+export const updateSystemSettings = (data) => request.put('/system/settings', data)
+export const saveNow = () => request.post('/system/save-now')
+export const getRecords = (params) => request.get('/system/records', { params })

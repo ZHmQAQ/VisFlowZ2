@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title VModule - PLC Virtual Extension Module
 echo ============================================
 echo   VModule v3.1.0 - PLC Virtual Extension

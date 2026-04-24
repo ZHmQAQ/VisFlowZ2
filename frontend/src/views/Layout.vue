@@ -71,6 +71,7 @@ const menuItems = [
   { path: '/monitor', title: '软元件监控', icon: 'Monitor' },
   { path: '/cameras', title: '相机管理', icon: 'VideoCamera' },
   { path: '/models', title: '模型管理', icon: 'Cpu' },
+  { path: '/records', title: '检测记录', icon: 'Document' },
   { path: '/settings', title: '系统设置', icon: 'Setting' },
 ]
 

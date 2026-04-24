@@ -15,6 +15,7 @@ const routes = [
       { path: 'monitor', name: 'Monitor', component: () => import('../views/DeviceMonitor.vue'), meta: { title: '软元件监控', icon: 'Monitor' } },
       { path: 'cameras', name: 'Cameras', component: () => import('../views/Cameras.vue'), meta: { title: '相机管理', icon: 'VideoCamera' } },
       { path: 'models', name: 'Models', component: () => import('../views/Models.vue'), meta: { title: '模型管理', icon: 'Cpu' } },
+      { path: 'records', name: 'Records', component: () => import('../views/Records.vue'), meta: { title: '检测记录', icon: 'Document' } },
       { path: 'settings', name: 'Settings', component: () => import('../views/Settings.vue'), meta: { title: '系统设置', icon: 'Setting' } },
     ],
   },
