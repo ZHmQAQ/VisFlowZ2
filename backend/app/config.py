@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     DATA_DIR: Path = Path(os.environ.get("VMODULE_DATA_DIR", str(BASE_DIR / "data")))
     WEIGHTS_DIR: Path = DATA_DIR / "weights"
     DATABASE_URL: str = f"sqlite+aiosqlite:///{DATA_DIR / 'vmodule.db'}"
+    # Logging
+    LOGS_DIR: Path = DATA_DIR / "logs"
+    LOG_LEVEL: str = "INFO"
+    LOG_RETENTION: str = "30 days"
+    # Image storage
+    SAVE_OK_IMAGES: bool = False
+    SAVE_NG_IMAGES: bool = True
     # PLC defaults
     DEFAULT_SCAN_CYCLE_MS: int = 20
     DEFAULT_MODBUS_TIMEOUT: float = 1.0
