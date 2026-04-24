@@ -26,6 +26,8 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from app.core.softdevice.memory import SoftDeviceMemory, SoftDeviceAddress
+from app.core.image_store import save_detection_image
+from app.core.persistence import save_detection_record
 
 logger = logging.getLogger("vmodule.detection")
 
@@ -181,6 +183,19 @@ class DetectionProgramBlock:
                 f"缺陷={defect_count} | "
                 f"耗时={elapsed_ms}ms"
             )
+
+            # ⑤ 图片存储 + 检测记录（不阻塞）
+            image_path = await save_detection_image(ch.camera_id, image, is_ok)
+            asyncio.create_task(save_detection_record(
+                channel_name=ch.name,
+                camera_id=ch.camera_id,
+                model_id=ch.model_id,
+                is_ok=is_ok,
+                defect_count=defect_count,
+                result_json=result,
+                image_path=image_path,
+                inference_ms=elapsed_ms,
+            ))
 
         except Exception as e:
             logger.error(f"通道 [{ch.name}] 检测异常: {e}")

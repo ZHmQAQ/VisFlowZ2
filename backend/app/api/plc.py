@@ -15,8 +15,18 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.persistence import schedule_save as _schedule_save
+
 logger = logging.getLogger("vmodule.api.plc")
 router = APIRouter(prefix="/plc", tags=["PLC"])
+
+
+def _auto_save():
+    """在写操作后触发防抖自动保存"""
+    try:
+        _schedule_save()
+    except Exception:
+        pass
 
 
 # ==================== 数据模型 ====================
@@ -86,6 +96,7 @@ async def add_plc(req: PLCConnectionCreate):
         timeout=req.timeout,
     )
     engine.add_plc(conn)
+    _auto_save()
     return {"ok": True, "message": f"PLC [{req.name}] 已添加"}
 
 
@@ -111,6 +122,7 @@ async def remove_plc(name: str):
     if client is None:
         raise HTTPException(404, f"PLC [{name}] 不存在")
     await client.disconnect()
+    _auto_save()
     return {"ok": True, "message": f"PLC [{name}] 已移除"}
 
 
@@ -171,6 +183,7 @@ async def add_mapping(req: IOMappingCreate):
         enabled=req.enabled,
     )
     engine.add_mapping(mapping)
+    _auto_save()
     return {"ok": True, "id": mapping.id, "message": f"映射 {req.vmodule_addr} ↔ {req.plc_addr} 已添加"}
 
 
@@ -190,6 +203,7 @@ async def add_mappings_batch(mappings: List[IOMappingCreate]):
         for m in mappings
     ]
     engine.add_mappings(items)
+    _auto_save()
     return {"ok": True, "count": len(items)}
 
 
@@ -214,6 +228,7 @@ async def clear_mappings():
     engine = _get_engine()
     count = len(engine._io_mappings)
     engine._io_mappings.clear()
+    _auto_save()
     return {"ok": True, "cleared": count}
 
 
@@ -223,6 +238,7 @@ async def delete_mapping(mapping_id: int):
     for i, m in enumerate(engine._io_mappings):
         if m.id == mapping_id:
             engine._io_mappings.pop(i)
+            _auto_save()
             return {"ok": True, "id": mapping_id}
     raise HTTPException(404, f"映射 ID [{mapping_id}] 不存在")
 
@@ -238,6 +254,7 @@ async def update_mapping(mapping_id: int, req: IOMappingCreate):
                 vmodule_addr=req.vmodule_addr, description=req.description,
                 enabled=req.enabled, id=mapping_id,
             )
+            _auto_save()
             return {"ok": True, "id": mapping_id}
     raise HTTPException(404, f"映射 ID [{mapping_id}] 不存在")
 
@@ -248,6 +265,7 @@ async def toggle_mapping(mapping_id: int):
     for m in engine._io_mappings:
         if m.id == mapping_id:
             m.enabled = not m.enabled
+            _auto_save()
             return {"ok": True, "id": mapping_id, "enabled": m.enabled}
     raise HTTPException(404, f"映射 ID [{mapping_id}] 不存在")
 
@@ -360,6 +378,7 @@ async def load_preset(preset: PresetConfig):
             plc_addr=m.plc_addr,
             plc_name=m.plc_name,
             description=m.description,
+            enabled=m.enabled if hasattr(m, 'enabled') else True,
         )
         engine.add_mapping(mapping)
 
@@ -401,6 +420,7 @@ async def load_preset(preset: PresetConfig):
         smap = preset.strategy.get("strategy_map", {})
         _strategy_maps[mid] = smap
 
+    _auto_save()
     return {
         "ok": True,
         "plc_connections": len(preset.plc_connections),
@@ -482,7 +502,124 @@ async def save_preset():
     }
 
 
-class EngineConfigUpdate(BaseModel):
+async def _do_load_preset(data: dict, engine, detection_block, multiframe_block):
+    """从 dict 恢复配置（供 persistence restore 调用）"""
+    preset = PresetConfig(**data)
+    from app.core.plc.modbus_client import PLCConnection
+    from app.core.softdevice.xinje import IOMapping
+    from app.core.detection.program_block import DetectionChannel
+    from app.core.detection.multiframe import MultiFrameChannel
+    from app.core.camera.manager import camera_manager
+    from app.api.model import _strategy_maps
+
+    for p in preset.plc_connections:
+        conn = PLCConnection(
+            name=p.name, host=p.host, port=p.port,
+            unit_id=p.unit_id, timeout=p.timeout,
+        )
+        engine.add_plc(conn)
+
+    for m in preset.io_mappings:
+        mapping = IOMapping(
+            vmodule_addr=m.vmodule_addr,
+            plc_addr=m.plc_addr,
+            plc_name=m.plc_name,
+            description=m.description,
+            enabled=m.enabled if hasattr(m, 'enabled') else True,
+        )
+        engine.add_mapping(mapping)
+
+    if detection_block:
+        for ch_data in preset.detection_channels:
+            detection_block.add_channel(DetectionChannel(**ch_data))
+
+    if multiframe_block:
+        for mf_data in preset.multiframe_channels:
+            multiframe_block.add_channel(MultiFrameChannel(**mf_data))
+
+    for cam in preset.cameras:
+        config = {**cam.get("config", {})}
+        if "exposure" in cam:
+            config["exposure"] = cam["exposure"]
+        if "gain" in cam:
+            config["gain"] = cam["gain"]
+        await camera_manager.add_camera(
+            cam.get("camera_id", ""),
+            cam.get("camera_type", "usb"),
+            config,
+        )
+
+    if preset.strategy and preset.strategy.get("model_id"):
+        mid = preset.strategy["model_id"]
+        _strategy_maps[mid] = preset.strategy.get("strategy_map", {})
+
+
+async def _collect_current_preset(engine, detection_block, multiframe_block) -> dict:
+    """收集当前配置为 dict（供 persistence auto-save 调用）"""
+    from app.core.camera.manager import camera_manager
+    from app.api.model import _strategy_maps
+
+    plc_connections = [
+        {"name": name, "host": c.config.host, "port": c.config.port,
+         "unit_id": c.config.unit_id, "timeout": c.config.timeout}
+        for name, c in engine._plc_clients.items()
+    ]
+
+    io_mappings = [
+        {"plc_name": m.plc_name, "plc_addr": m.plc_addr,
+         "vmodule_addr": m.vmodule_addr, "description": m.description,
+         "enabled": m.enabled}
+        for m in engine._io_mappings
+    ]
+
+    detection_channels = []
+    if detection_block:
+        for ch in detection_block._channels:
+            detection_channels.append({
+                "name": ch.name, "trigger_addr": ch.trigger_addr,
+                "camera_id": ch.camera_id, "model_id": ch.model_id,
+                "busy_addr": ch.busy_addr, "done_addr": ch.done_addr,
+                "result_addr": ch.result_addr,
+                "defect_count_addr": ch.defect_count_addr,
+                "inference_time_addr": ch.inference_time_addr,
+                "total_count_addr": getattr(ch, 'total_count_addr', ''),
+                "ng_count_addr": getattr(ch, 'ng_count_addr', ''),
+                "ok_max_addr": getattr(ch, 'ok_max_addr', ''),
+            })
+
+    multiframe_channels = []
+    if multiframe_block:
+        for ch in multiframe_block._channels:
+            multiframe_channels.append({
+                "name": ch.name, "camera_id": ch.camera_id,
+                "model_id": ch.model_id, "frame_count": ch.frame_count,
+                "cmd_addr": ch.cmd_addr, "status_addr": ch.status_addr,
+                "result_addr": ch.result_addr,
+                "count_addr": ch.count_addr, "time_addr": ch.time_addr,
+            })
+
+    cameras = []
+    for vcam in camera_manager.get_all_cameras().values():
+        cameras.append({
+            "camera_id": vcam.camera_id,
+            "camera_type": vcam.camera_type,
+            "config": vcam.config,
+        })
+
+    strategy = None
+    if _strategy_maps:
+        for mid, smap in _strategy_maps.items():
+            strategy = {"model_id": mid, "strategy_map": smap}
+            break
+
+    return {
+        "plc_connections": plc_connections,
+        "io_mappings": io_mappings,
+        "detection_channels": detection_channels,
+        "multiframe_channels": multiframe_channels,
+        "cameras": cameras,
+        "strategy": strategy,
+    }
     target_cycle_ms: int = Field(default=20, ge=5, le=1000)
     modbus_timeout: float = Field(default=1.0, ge=0.1, le=10.0)
 

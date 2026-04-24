@@ -16,14 +16,14 @@ from app.core.detection.program_block import DetectionProgramBlock
 from app.core.detection.multiframe import MultiFrameProgramBlock
 from app.core.camera.manager import camera_manager
 from app.core.inference.manager import inference_manager
-
-logger = logging.getLogger("vmodule")
+from app.utils.logger import setup_logger, logger
 
 
 # -- 静默高频轮询路径的 access log --
 class _QuietPollFilter(logging.Filter):
     """过滤 engine/status、camera/list 等高频轮询的 access log"""
-    _QUIET = ("/api/plc/engine/status", "/api/camera/list", "/health")
+    _QUIET = ("/api/plc/engine/status", "/api/camera/list", "/health",
+              "/api/system/save-now", "/api/system/settings", "/api/system/log-level")
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
@@ -44,11 +44,19 @@ multiframe_block: MultiFrameProgramBlock | None = None
 async def lifespan(app: FastAPI):
     global scan_engine, memory, detection_block, multiframe_block
 
+    # Setup logging
+    settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    setup_logger()
+
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
     # Ensure data directories exist
     settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
     settings.WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Initialize database
+    from app.db.database import init_db
+    await init_db()
 
     # Initialize soft-device memory and scan engine
     memory = SoftDeviceMemory()
@@ -70,6 +78,23 @@ async def lifespan(app: FastAPI):
     from app.api.detection import set_detection_block, set_multiframe_block
     set_detection_block(detection_block)
     set_multiframe_block(multiframe_block)
+
+    # Restore config from database
+    from app.core.persistence import restore_config, set_config_collector
+    saved = await restore_config()
+    if saved:
+        try:
+            from app.api.plc import _do_load_preset
+            await _do_load_preset(saved, scan_engine, detection_block, multiframe_block)
+            logger.info("配置自动恢复完成")
+        except Exception as e:
+            logger.error(f"配置恢复失败: {e}")
+
+    # Setup auto-save config collector
+    async def _collect_config():
+        from app.api.plc import _collect_current_preset
+        return await _collect_current_preset(scan_engine, detection_block, multiframe_block)
+    set_config_collector(_collect_config)
 
     await scan_engine.start()
 
@@ -127,11 +152,13 @@ from app.api.plc import router as plc_router
 from app.api.detection import router as detection_router
 from app.api.camera import router as camera_router
 from app.api.model import router as model_router
+from app.api.system import router as system_router
 
 api_router.include_router(plc_router)
 api_router.include_router(detection_router)
 api_router.include_router(camera_router)
 api_router.include_router(model_router)
+api_router.include_router(system_router)
 
 app.include_router(api_router)
 

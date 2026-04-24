@@ -268,7 +268,11 @@ class ScanEngine:
     # ==================== I/O 刷新 ====================
 
     async def _refresh_inputs(self):
-        """从 PLC 读取输入软元件到 EX/ED"""
+        """从 PLC 批量读取输入软元件到 EX/ED
+
+        将同一 PLC、同类型（线圈/寄存器）的连续地址合并为一次 Modbus 请求，
+        大幅减少通信次数。
+        """
         active = [m for m in self._io_mappings if m.enabled]
         groups = IOBatch.group_mappings(active, is_input=True)
 
@@ -277,26 +281,34 @@ class ScanEngine:
             if not client or not client.connected:
                 continue
 
-            # 读线圈 → EX
-            for m in type_groups.get("coil", []):
-                try:
-                    modbus_addr = m.get_modbus_address()
-                    values = await client.read_coils(modbus_addr, 1)
-                    self.memory.write(m.vmodule_addr, values[0])
-                except Exception as e:
-                    logger.debug(f"读线圈失败 {m.plc_addr}: {e}")
+            # 批量读线圈 → EX
+            coils = type_groups.get("coil", [])
+            if coils:
+                for start, count, items in IOBatch.optimize_ranges(coils):
+                    try:
+                        values = await client.read_coils(start, count)
+                        for m, offset in items:
+                            self.memory.write(m.vmodule_addr, values[offset])
+                    except Exception as e:
+                        logger.debug(f"批量读线圈失败 [{plc_name}] @{start}+{count}: {e}")
 
-            # 读寄存器 → ED
-            for m in type_groups.get("register", []):
-                try:
-                    modbus_addr = m.get_modbus_address()
-                    values = await client.read_registers(modbus_addr, 1)
-                    self.memory.write(m.vmodule_addr, values[0])
-                except Exception as e:
-                    logger.debug(f"读寄存器失败 {m.plc_addr}: {e}")
+            # 批量读寄存器 → ED
+            regs = type_groups.get("register", [])
+            if regs:
+                for start, count, items in IOBatch.optimize_ranges(regs):
+                    try:
+                        values = await client.read_registers(start, count)
+                        for m, offset in items:
+                            self.memory.write(m.vmodule_addr, values[offset])
+                    except Exception as e:
+                        logger.debug(f"批量读寄存器失败 [{plc_name}] @{start}+{count}: {e}")
 
     async def _refresh_outputs(self):
-        """将 EY/EW 写出到 PLC"""
+        """将 EY/EW 批量写出到 PLC
+
+        线圈: 收集连续范围内所有值，一次 FC0F 写出
+        寄存器: 收集连续范围内所有值，一次 FC10 写出
+        """
         active = [m for m in self._io_mappings if m.enabled]
         groups = IOBatch.group_mappings(active, is_input=False)
 
@@ -305,23 +317,36 @@ class ScanEngine:
             if not client or not client.connected:
                 continue
 
-            # EY → 写线圈
-            for m in type_groups.get("coil", []):
-                try:
-                    modbus_addr = m.get_modbus_address()
-                    value = self.memory.read(m.vmodule_addr)
-                    await client.write_coil(modbus_addr, bool(value))
-                except Exception as e:
-                    logger.debug(f"写线圈失败 {m.plc_addr}: {e}")
+            # EY → 批量写线圈
+            coils = type_groups.get("coil", [])
+            if coils:
+                for start, count, items in IOBatch.optimize_ranges(coils):
+                    try:
+                        # 构建完整的连续值数组
+                        values = [False] * count
+                        for m, offset in items:
+                            values[offset] = bool(self.memory.read(m.vmodule_addr))
+                        if count == 1:
+                            await client.write_coil(start, values[0])
+                        else:
+                            await client.write_coils(start, values)
+                    except Exception as e:
+                        logger.debug(f"批量写线圈失败 [{plc_name}] @{start}+{count}: {e}")
 
-            # EW → 写寄存器
-            for m in type_groups.get("register", []):
-                try:
-                    modbus_addr = m.get_modbus_address()
-                    value = self.memory.read(m.vmodule_addr)
-                    await client.write_register(modbus_addr, int(value))
-                except Exception as e:
-                    logger.debug(f"写寄存器失败 {m.plc_addr}: {e}")
+            # EW → 批量写寄存器
+            regs = type_groups.get("register", [])
+            if regs:
+                for start, count, items in IOBatch.optimize_ranges(regs):
+                    try:
+                        values = [0] * count
+                        for m, offset in items:
+                            values[offset] = int(self.memory.read(m.vmodule_addr))
+                        if count == 1:
+                            await client.write_register(start, values[0])
+                        else:
+                            await client.write_registers(start, values)
+                    except Exception as e:
+                        logger.debug(f"批量写寄存器失败 [{plc_name}] @{start}+{count}: {e}")
 
     # ==================== 状态查询 ====================
 

@@ -1,6 +1,6 @@
 {
   "name": "dual_daheng_3frame",
-  "description": "Two Daheng GigE cameras, 3 virtual cameras each (different exposures). 6 single-frame detection channels.",
+  "description": "双大恒相机 × 3曝光, 6个单帧检测通道. PLC地址连续排列便于批量读写.",
 
   "plc_connections": [
     {
@@ -16,9 +16,9 @@
     {"plc_name": "PLC1", "plc_addr": "M100", "vmodule_addr": "EX0",  "description": "Cam1-Exp1 触发"},
     {"plc_name": "PLC1", "plc_addr": "M101", "vmodule_addr": "EX1",  "description": "Cam1-Exp2 触发"},
     {"plc_name": "PLC1", "plc_addr": "M102", "vmodule_addr": "EX2",  "description": "Cam1-Exp3 触发"},
-    {"plc_name": "PLC1", "plc_addr": "M110", "vmodule_addr": "EX10", "description": "Cam2-Exp1 触发"},
-    {"plc_name": "PLC1", "plc_addr": "M111", "vmodule_addr": "EX11", "description": "Cam2-Exp2 触发"},
-    {"plc_name": "PLC1", "plc_addr": "M112", "vmodule_addr": "EX12", "description": "Cam2-Exp3 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M103", "vmodule_addr": "EX3",  "description": "Cam2-Exp1 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M104", "vmodule_addr": "EX4",  "description": "Cam2-Exp2 触发"},
+    {"plc_name": "PLC1", "plc_addr": "M105", "vmodule_addr": "EX5",  "description": "Cam2-Exp3 触发"},
 
     {"plc_name": "PLC1", "plc_addr": "M200", "vmodule_addr": "EY0",  "description": "Cam1-Exp1 完成"},
     {"plc_name": "PLC1", "plc_addr": "M201", "vmodule_addr": "EY1",  "description": "Cam1-Exp1 OK/NG"},
@@ -26,27 +26,25 @@
     {"plc_name": "PLC1", "plc_addr": "M203", "vmodule_addr": "EY3",  "description": "Cam1-Exp2 OK/NG"},
     {"plc_name": "PLC1", "plc_addr": "M204", "vmodule_addr": "EY4",  "description": "Cam1-Exp3 完成"},
     {"plc_name": "PLC1", "plc_addr": "M205", "vmodule_addr": "EY5",  "description": "Cam1-Exp3 OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M206", "vmodule_addr": "EY6",  "description": "Cam2-Exp1 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M207", "vmodule_addr": "EY7",  "description": "Cam2-Exp1 OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M208", "vmodule_addr": "EY8",  "description": "Cam2-Exp2 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M209", "vmodule_addr": "EY9",  "description": "Cam2-Exp2 OK/NG"},
+    {"plc_name": "PLC1", "plc_addr": "M210", "vmodule_addr": "EY10", "description": "Cam2-Exp3 完成"},
+    {"plc_name": "PLC1", "plc_addr": "M211", "vmodule_addr": "EY11", "description": "Cam2-Exp3 OK/NG"},
 
-    {"plc_name": "PLC1", "plc_addr": "M210", "vmodule_addr": "EY10", "description": "Cam2-Exp1 完成"},
-    {"plc_name": "PLC1", "plc_addr": "M211", "vmodule_addr": "EY11", "description": "Cam2-Exp1 OK/NG"},
-    {"plc_name": "PLC1", "plc_addr": "M212", "vmodule_addr": "EY12", "description": "Cam2-Exp2 完成"},
-    {"plc_name": "PLC1", "plc_addr": "M213", "vmodule_addr": "EY13", "description": "Cam2-Exp2 OK/NG"},
-    {"plc_name": "PLC1", "plc_addr": "M214", "vmodule_addr": "EY14", "description": "Cam2-Exp3 完成"},
-    {"plc_name": "PLC1", "plc_addr": "M215", "vmodule_addr": "EY15", "description": "Cam2-Exp3 OK/NG"},
-
-    {"plc_name": "PLC1", "plc_addr": "D30",  "vmodule_addr": "EW0",  "description": "Cam1-Exp1 缺陷数"},
-    {"plc_name": "PLC1", "plc_addr": "D31",  "vmodule_addr": "EW1",  "description": "Cam1-Exp1 推理耗时ms"},
-    {"plc_name": "PLC1", "plc_addr": "D32",  "vmodule_addr": "EW2",  "description": "Cam1-Exp2 缺陷数"},
-    {"plc_name": "PLC1", "plc_addr": "D33",  "vmodule_addr": "EW3",  "description": "Cam1-Exp2 推理耗时ms"},
-    {"plc_name": "PLC1", "plc_addr": "D34",  "vmodule_addr": "EW4",  "description": "Cam1-Exp3 缺陷数"},
-    {"plc_name": "PLC1", "plc_addr": "D35",  "vmodule_addr": "EW5",  "description": "Cam1-Exp3 推理耗时ms"},
-
-    {"plc_name": "PLC1", "plc_addr": "D40",  "vmodule_addr": "EW10", "description": "Cam2-Exp1 缺陷数"},
-    {"plc_name": "PLC1", "plc_addr": "D41",  "vmodule_addr": "EW11", "description": "Cam2-Exp1 推理耗时ms"},
-    {"plc_name": "PLC1", "plc_addr": "D42",  "vmodule_addr": "EW12", "description": "Cam2-Exp2 缺陷数"},
-    {"plc_name": "PLC1", "plc_addr": "D43",  "vmodule_addr": "EW13", "description": "Cam2-Exp2 推理耗时ms"},
-    {"plc_name": "PLC1", "plc_addr": "D44",  "vmodule_addr": "EW14", "description": "Cam2-Exp3 缺陷数"},
-    {"plc_name": "PLC1", "plc_addr": "D45",  "vmodule_addr": "EW15", "description": "Cam2-Exp3 推理耗时ms"}
+    {"plc_name": "PLC1", "plc_addr": "D100", "vmodule_addr": "EW0",  "description": "Cam1-Exp1 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D101", "vmodule_addr": "EW1",  "description": "Cam1-Exp1 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D102", "vmodule_addr": "EW2",  "description": "Cam1-Exp2 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D103", "vmodule_addr": "EW3",  "description": "Cam1-Exp2 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D104", "vmodule_addr": "EW4",  "description": "Cam1-Exp3 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D105", "vmodule_addr": "EW5",  "description": "Cam1-Exp3 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D106", "vmodule_addr": "EW6",  "description": "Cam2-Exp1 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D107", "vmodule_addr": "EW7",  "description": "Cam2-Exp1 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D108", "vmodule_addr": "EW8",  "description": "Cam2-Exp2 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D109", "vmodule_addr": "EW9",  "description": "Cam2-Exp2 推理耗时ms"},
+    {"plc_name": "PLC1", "plc_addr": "D110", "vmodule_addr": "EW10", "description": "Cam2-Exp3 缺陷数"},
+    {"plc_name": "PLC1", "plc_addr": "D111", "vmodule_addr": "EW11", "description": "Cam2-Exp3 推理耗时ms"}
   ],
 
   "detection_channels": [
@@ -87,34 +85,34 @@
       "name": "Cam2-Exp1",
       "camera_id": "daheng_cam2_exp1",
       "model_id": "yolo_default",
-      "trigger_addr": "EX10",
-      "busy_addr": "VM110",
-      "done_addr": "EY10",
-      "result_addr": "EY11",
-      "defect_count_addr": "EW10",
-      "inference_time_addr": "EW11"
+      "trigger_addr": "EX3",
+      "busy_addr": "VM103",
+      "done_addr": "EY6",
+      "result_addr": "EY7",
+      "defect_count_addr": "EW6",
+      "inference_time_addr": "EW7"
     },
     {
       "name": "Cam2-Exp2",
       "camera_id": "daheng_cam2_exp2",
       "model_id": "yolo_default",
-      "trigger_addr": "EX11",
-      "busy_addr": "VM111",
-      "done_addr": "EY12",
-      "result_addr": "EY13",
-      "defect_count_addr": "EW12",
-      "inference_time_addr": "EW13"
+      "trigger_addr": "EX4",
+      "busy_addr": "VM104",
+      "done_addr": "EY8",
+      "result_addr": "EY9",
+      "defect_count_addr": "EW8",
+      "inference_time_addr": "EW9"
     },
     {
       "name": "Cam2-Exp3",
       "camera_id": "daheng_cam2_exp3",
       "model_id": "yolo_default",
-      "trigger_addr": "EX12",
-      "busy_addr": "VM112",
-      "done_addr": "EY14",
-      "result_addr": "EY15",
-      "defect_count_addr": "EW14",
-      "inference_time_addr": "EW15"
+      "trigger_addr": "EX5",
+      "busy_addr": "VM105",
+      "done_addr": "EY10",
+      "result_addr": "EY11",
+      "defect_count_addr": "EW10",
+      "inference_time_addr": "EW11"
     }
   ],
 
