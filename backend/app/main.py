@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 from contextlib import asynccontextmanager
 
@@ -18,20 +19,26 @@ from app.core.camera.manager import camera_manager
 from app.core.inference.manager import inference_manager
 from app.utils.logger import setup_logger, logger
 
+settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
+settings.WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-# -- 静默高频轮询路径的 access log --
-class _QuietPollFilter(logging.Filter):
-    """过滤 engine/status、camera/list 等高频轮询的 access log"""
-    _QUIET = ("/api/plc/engine/status", "/api/camera/list", "/health",
-              "/api/system/save-now", "/api/system/settings", "/api/system/log-level")
+
+# Keep the console focused on operator-relevant backend messages.
+class _QuietAccessFilter(logging.Filter):
+    """Suppress routine successful access logs and keep console output readable."""
+
+    _STATUS_RE = re.compile(r'HTTP/\\d(?:\\.\\d)?\" (\\d{3})')
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(p in msg for p in self._QUIET)
+        match = self._STATUS_RE.search(msg)
+        if match and int(match.group(1)) < 400:
+            return False
+        return True
 
 
-# 注入到 uvicorn.access logger（uvicorn 在 import 时就创建了该 logger）
-logging.getLogger("uvicorn.access").addFilter(_QuietPollFilter())
+logging.getLogger("uvicorn.access").addFilter(_QuietAccessFilter())
 
 # -- Global instances (populated during lifespan) --
 scan_engine: ScanEngine | None = None
@@ -80,7 +87,10 @@ async def lifespan(app: FastAPI):
     set_multiframe_block(multiframe_block)
 
     # Restore config from database
-    from app.core.persistence import restore_config, set_config_collector
+    from app.core.persistence import (
+        restore_config, restore_runtime_settings, set_config_collector,
+    )
+    await restore_runtime_settings()
     saved = await restore_config()
     if saved:
         try:
@@ -153,12 +163,22 @@ from app.api.detection import router as detection_router
 from app.api.camera import router as camera_router
 from app.api.model import router as model_router
 from app.api.system import router as system_router
+from app.api.gpu import router as gpu_router
+from app.api.config import router as config_router
+from app.api.device import router as device_router
+from app.api.event_action import router as event_action_router
+from app.api.rule import router as rule_router
 
 api_router.include_router(plc_router)
 api_router.include_router(detection_router)
 api_router.include_router(camera_router)
 api_router.include_router(model_router)
 api_router.include_router(system_router)
+api_router.include_router(gpu_router)
+api_router.include_router(config_router)
+api_router.include_router(device_router)
+api_router.include_router(event_action_router)
+api_router.include_router(rule_router)
 
 app.include_router(api_router)
 
