@@ -1,25 +1,24 @@
 @echo off
 setlocal EnableDelayedExpansion
 chcp 65001 >nul
-title VModule - Full Setup
+title VModule - Lite Setup
 
 cd /d "%~dp0"
 set "BASE_DIR=%~dp0"
 set "BACKEND_DIR=%BASE_DIR%backend"
 set "FRONTEND_DIR=%BASE_DIR%frontend"
-set "PY_ENV_MODE="
 set "CONDA_BAT="
 set "CONDA_ENV_NAME="
+set "PY_ENV_MODE="
 set "CONDA_REUSE_SOURCE="
 
 echo ============================================
-echo   VModule - Full Setup
-echo   Python/Conda + Backend deps + Frontend
+echo   VModule - Lite Setup
+echo   Tsinghua PyPI + npmmirror
 echo ============================================
 echo.
 
-echo [1/5] Detecting Python environment...
-
+echo [1/4] Detecting or creating Python environment...
 where conda >nul 2>&1
 if not errorlevel 1 (
     for /f "delims=" %%i in ('conda info --base 2^>nul') do set "CONDA_BASE=%%i"
@@ -61,6 +60,16 @@ if defined CONDA_BAT (
             goto :activate_conda
         )
     )
+
+    echo   [CREATE] Conda env envVModule with Python 3.10
+    call "!CONDA_BAT!" create -n envVModule python=3.10 -y
+    if errorlevel 1 (
+        echo   [WARN] Conda env creation failed. Falling back to .venv.
+        goto :activate_venv
+    )
+    set "CONDA_ENV_NAME=envVModule"
+    set "CONDA_REUSE_SOURCE=VModule"
+    goto :activate_conda
 )
 
 goto :activate_venv
@@ -81,14 +90,12 @@ set "PY_ENV_MODE=conda"
 goto :env_ready
 
 :activate_venv
-echo   [INFO] Conda env envVModule/vmodule/envVisFlowZ/visf not found. Using local .venv.
 where python >nul 2>&1
 if errorlevel 1 (
-    echo   [ERROR] Python 3.10+ not found. Install Python or create Conda env envVModule.
+    echo   [ERROR] Python not found. Install Python 3.10+ or Conda first.
     pause
     exit /b 1
 )
-
 if not exist "%BASE_DIR%.venv\Scripts\activate.bat" (
     echo   [CREATE] .venv
     python -m venv "%BASE_DIR%.venv"
@@ -97,10 +104,7 @@ if not exist "%BASE_DIR%.venv\Scripts\activate.bat" (
         pause
         exit /b 1
     )
-) else (
-    echo   [OK] .venv exists
 )
-
 call "%BASE_DIR%.venv\Scripts\activate.bat"
 if errorlevel 1 (
     echo   [ERROR] Failed to activate .venv
@@ -113,18 +117,11 @@ set "PY_ENV_MODE=venv"
 for /f "tokens=*" %%i in ('python --version') do echo   [OK] %%i
 echo.
 
-echo [2/5] Installing backend dependencies...
-python -m pip --version >nul 2>&1
-if errorlevel 1 (
-    echo   [ERROR] pip is not available.
-    pause
-    exit /b 1
-)
-
-python -m pip install --upgrade pip
+echo [2/4] Installing backend dependencies via Tsinghua mirror...
+python -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
 if errorlevel 1 echo   [WARN] pip upgrade failed, continuing.
 
-python -m pip install -r "%BACKEND_DIR%\requirements.txt"
+python -m pip install -r "%BACKEND_DIR%\requirements.txt" -i https://pypi.tuna.tsinghua.edu.cn/simple
 if errorlevel 1 (
     echo   [ERROR] Backend dependency installation failed.
     pause
@@ -139,7 +136,7 @@ if errorlevel 1 (
 )
 echo.
 
-echo [3/5] Building frontend...
+echo [3/4] Building frontend via npmmirror...
 if not exist "%FRONTEND_DIR%\package.json" (
     if exist "%FRONTEND_DIR%\dist\index.html" (
         echo   [OK] Frontend dist-only package detected. Skipping npm build.
@@ -152,20 +149,24 @@ if not exist "%FRONTEND_DIR%\package.json" (
 
 where node >nul 2>&1
 if errorlevel 1 (
-    echo   [WARN] Node.js not found. Skipping frontend build.
-    if not exist "%FRONTEND_DIR%\dist\index.html" (
-        echo   [ERROR] frontend\dist\index.html is missing. Install Node.js 18+ and rerun setup.bat.
+    if "!PY_ENV_MODE!"=="conda" (
+        echo   [INFO] Node.js not found. Installing nodejs=18 via Conda...
+        call "!CONDA_BAT!" install -n "!CONDA_ENV_NAME!" nodejs=18 -c conda-forge -y
+        if errorlevel 1 (
+            echo   [ERROR] Node.js installation failed.
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo   [ERROR] Node.js not found. Install Node.js 18+ or use Conda env setup.
         pause
         exit /b 1
     )
-    goto :frontend_done
 )
 
-for /f "tokens=*" %%i in ('node --version') do echo   [OK] Node.js %%i
-for /f "tokens=*" %%i in ('npm --version') do echo   [OK] npm %%i
-
 cd /d "%FRONTEND_DIR%"
-call npm install
+call npm config set registry https://registry.npmmirror.com
+call npm install --registry=https://registry.npmmirror.com
 if errorlevel 1 (
     echo   [ERROR] npm install failed.
     pause
@@ -179,39 +180,23 @@ if errorlevel 1 (
     exit /b 1
 )
 cd /d "%BASE_DIR%"
-
 :frontend_done
 echo   [OK] Frontend ready.
 echo.
 
-echo [4/5] Creating runtime directories...
+echo [4/4] Creating runtime directories...
 if not exist "%BACKEND_DIR%\data" mkdir "%BACKEND_DIR%\data"
 if not exist "%BACKEND_DIR%\data\weights" mkdir "%BACKEND_DIR%\data\weights"
 if not exist "%BACKEND_DIR%\data\logs" mkdir "%BACKEND_DIR%\data\logs"
 if not exist "%BACKEND_DIR%\data\cycles" mkdir "%BACKEND_DIR%\data\cycles"
-if not exist "%BACKEND_DIR%\data\images" mkdir "%BACKEND_DIR%\data\images"
-if not exist "%BACKEND_DIR%\data\ng_images" mkdir "%BACKEND_DIR%\data\ng_images"
 echo   [OK] Runtime directories ready.
 echo.
 
-echo [5/5] Running lightweight Python compile check...
-python -m py_compile "%BACKEND_DIR%\app\core\detection\multiframe.py" "%BACKEND_DIR%\app\api\detection.py" "%BACKEND_DIR%\app\api\plc.py" "%BASE_DIR%scripts\verify_dual_usb_multiframe.py"
-if errorlevel 1 (
-    echo   [WARN] Python compile check failed. Review the output above.
-) else (
-    echo   [OK] Compile check passed.
-)
-echo.
-
 echo ============================================
-echo   Setup complete
+echo   Lite setup complete
 echo ============================================
-echo   Start:       start.bat
-echo   Lite start:  startlite.bat
-echo   API:         http://localhost:8100/docs
-echo   Baseline:    load_preset.bat presets\dual_usb_multiframe_baseline.json
-echo   USB test:    verify_dual_usb_multiframe.bat
-echo   Exe build:   build_backend_exe.bat
+echo   Start: startlite.bat
+echo   API:   http://localhost:8100/docs
 echo.
 pause
 
