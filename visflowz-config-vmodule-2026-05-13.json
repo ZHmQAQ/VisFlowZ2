@@ -1,0 +1,495 @@
+{
+  "name": "\u5f53\u524d VisFlowZ \u6d77\u5eb7\u68c0\u6d4b\u6d41\u7a0b",
+  "description": "\u4ece D:\\agentzone\\visflowz-config-2026-05-13.json \u8f6c\u6362\u4e3a VModule \u53ef\u5bfc\u5165\u9884\u8bbe\u3002\u4fdd\u7559 PLC \u547d\u4ee4\u5bc4\u5b58\u5668 D60/D62\u3001\u5e94\u7b54\u5bc4\u5b58\u5668 D61/D63\u3001\u591a\u5e27 ACK\u3001\u9519\u8bef\u7801\u3001\u7ed3\u679c\u7801\u548c\u7f3a\u9677\u5206\u7c7b\u4e1a\u52a1\u6d41\u7a0b\u3002",
+  "plc_connections": [
+    {
+      "name": "PLC1",
+      "host": "192.168.124.148",
+      "port": 502,
+      "unit_id": 1,
+      "timeout": 1
+    }
+  ],
+  "io_mappings": [
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D60",
+      "vmodule_addr": "ED60",
+      "description": "pos2 command register, Modbus 0x3C"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D62",
+      "vmodule_addr": "ED62",
+      "description": "pos3 command register, Modbus 0x3E"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D61",
+      "vmodule_addr": "EW61",
+      "description": "pos2 ACK/result register, Modbus 0x3D = 0x3C + response_offset"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D63",
+      "vmodule_addr": "EW63",
+      "description": "pos3 ACK/result register, Modbus 0x3F = 0x3E + response_offset"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D200",
+      "vmodule_addr": "EW0",
+      "description": "pos2 defect count"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D201",
+      "vmodule_addr": "EW1",
+      "description": "pos2 inference time"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D210",
+      "vmodule_addr": "EW10",
+      "description": "pos3 defect count"
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D211",
+      "vmodule_addr": "EW11",
+      "description": "pos3 inference time"
+    }
+  ],
+  "cameras": [
+    {
+      "camera_id": "pos2",
+      "camera_type": "hikvision",
+      "config": {
+        "connection": {
+          "ip_address": "",
+          "serial_number": "DA8290609",
+          "trigger_mode": "software"
+        },
+        "exposures": [
+          30000,
+          30000,
+          30000,
+          30000
+        ],
+        "roi": null,
+        "enabled": true
+      },
+      "exposure": 30000,
+      "gain": 1
+    },
+    {
+      "camera_id": "pos3",
+      "camera_type": "hikvision",
+      "config": {
+        "connection": {
+          "ip_address": "",
+          "serial_number": "DA8290709",
+          "trigger_mode": "software"
+        },
+        "exposures": [
+          40000
+        ],
+        "roi": null,
+        "enabled": true
+      },
+      "exposure": 40000,
+      "gain": 1
+    }
+  ],
+  "devices": [
+    {
+      "device_id": "plc_receiver",
+      "name": "PLC \u89e6\u53d1\u63a5\u6536",
+      "type": "tcp_server",
+      "connection": {
+        "host": "0.0.0.0",
+        "port": 502
+      },
+      "protocol": "modbus",
+      "enabled": true
+    },
+    {
+      "device_id": "plc_sender",
+      "name": "PLC \u5e94\u7b54\u53d1\u9001",
+      "type": "tcp",
+      "connection": {
+        "host": "192.168.124.148",
+        "port": 502
+      },
+      "protocol": "modbus",
+      "enabled": true
+    }
+  ],
+  "detection_channels": [],
+  "event_actions": [
+    {
+      "mapping_id": "pos2_ack",
+      "name": "pos2 \u91c7\u96c6 ACK",
+      "event_type": "on_cam_ok",
+      "event_source": "pos2",
+      "event_filter": null,
+      "action_type": "write_register",
+      "action_target": "plc_sender",
+      "action_params": {
+        "value_type": "ack",
+        "ack_base": 16,
+        "response_offset": 1
+      },
+      "order_index": 10,
+      "enabled": true
+    },
+    {
+      "mapping_id": "pos2_err",
+      "name": "pos2 \u91c7\u96c6\u5931\u8d25",
+      "event_type": "on_cam_fail",
+      "event_source": "pos2",
+      "event_filter": null,
+      "action_type": "write_register",
+      "action_target": "plc_sender",
+      "action_params": {
+        "value_type": "fixed",
+        "value": 255,
+        "response_offset": 1
+      },
+      "order_index": 20,
+      "enabled": true
+    },
+    {
+      "mapping_id": "pos2_result",
+      "name": "pos2 \u68c0\u6d4b\u7ed3\u679c",
+      "event_type": "on_cycle_done",
+      "event_source": "pos2",
+      "event_filter": null,
+      "action_type": "write_register",
+      "action_target": "plc_sender",
+      "action_params": {
+        "value_type": "result",
+        "result_codes": {
+          "ok": 7,
+          "ng_repairable": 6,
+          "ng_fatal": 5
+        },
+        "response_offset": 1
+      },
+      "order_index": 30,
+      "enabled": true
+    },
+    {
+      "mapping_id": "pos3_ack",
+      "name": "pos3 \u91c7\u96c6 ACK",
+      "event_type": "on_cam_ok",
+      "event_source": "pos3",
+      "event_filter": null,
+      "action_type": "write_register",
+      "action_target": "plc_sender",
+      "action_params": {
+        "value_type": "ack",
+        "ack_base": 16,
+        "response_offset": 1
+      },
+      "order_index": 40,
+      "enabled": true
+    },
+    {
+      "mapping_id": "pos3_err",
+      "name": "pos3 \u91c7\u96c6\u5931\u8d25",
+      "event_type": "on_cam_fail",
+      "event_source": "pos3",
+      "event_filter": null,
+      "action_type": "write_register",
+      "action_target": "plc_sender",
+      "action_params": {
+        "value_type": "fixed",
+        "value": 255,
+        "response_offset": 1
+      },
+      "order_index": 50,
+      "enabled": true
+    },
+    {
+      "mapping_id": "pos3_result",
+      "name": "pos3 \u68c0\u6d4b\u7ed3\u679c",
+      "event_type": "on_cycle_done",
+      "event_source": "pos3",
+      "event_filter": null,
+      "action_type": "write_register",
+      "action_target": "plc_sender",
+      "action_params": {
+        "value_type": "result",
+        "result_codes": {
+          "ok": 7,
+          "ng_repairable": 6,
+          "ng_fatal": 5
+        },
+        "response_offset": 1
+      },
+      "order_index": 60,
+      "enabled": true
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "pos2_ng_save",
+      "name": "pos2 NG \u4fdd\u5b58\u56fe\u50cf\u5e76\u62a5\u8b66",
+      "trigger_source": "pos2.capture_done",
+      "conditions": [
+        {
+          "field": "is_ok",
+          "operator": "==",
+          "value": false
+        }
+      ],
+      "actions": [
+        {
+          "type": "save_image",
+          "target": "",
+          "params": {
+            "format": "png",
+            "save_per_frame": false
+          }
+        },
+        {
+          "type": "trigger_alarm",
+          "target": "",
+          "params": {
+            "type": "visual",
+            "message": "pos2 \u68c0\u6d4b\u5230\u7f3a\u9677"
+          }
+        }
+      ],
+      "priority": 20,
+      "enabled": true,
+      "description": "pos2 \u68c0\u6d4b\u5230\u7f3a\u9677\u65f6\u4fdd\u5b58\u56fe\u50cf\u5e76\u89e6\u53d1\u62a5\u8b66"
+    },
+    {
+      "rule_id": "pos3_ng_save",
+      "name": "pos3 NG \u4fdd\u5b58\u56fe\u50cf\u5e76\u62a5\u8b66",
+      "trigger_source": "pos3.capture_done",
+      "conditions": [
+        {
+          "field": "is_ok",
+          "operator": "==",
+          "value": false
+        }
+      ],
+      "actions": [
+        {
+          "type": "save_image",
+          "target": "",
+          "params": {
+            "format": "png",
+            "save_per_frame": false
+          }
+        },
+        {
+          "type": "trigger_alarm",
+          "target": "",
+          "params": {
+            "type": "visual",
+            "message": "pos3 \u68c0\u6d4b\u5230\u7f3a\u9677"
+          }
+        }
+      ],
+      "priority": 20,
+      "enabled": true,
+      "description": "pos3 \u68c0\u6d4b\u5230\u7f3a\u9677\u65f6\u4fdd\u5b58\u56fe\u50cf\u5e76\u89e6\u53d1\u62a5\u8b66"
+    }
+  ],
+  "strategy": {
+    "model_id": "model_huade",
+    "strategy_map": {
+      "default": "ok_ng",
+      "trigger_mode": "external",
+      "trigger_camera_map": {
+        "0x3C": "pos2",
+        "0x3E": "pos3"
+      },
+      "response_device_id": "plc_sender",
+      "response_offset": 1,
+      "ack_base": 16,
+      "error_code": 255,
+      "result_codes": {
+        "ok": 7,
+        "ng_repairable": 6,
+        "ng_fatal": 5
+      },
+      "strong_ack": false,
+      "strong_ack_interval": 50,
+      "inference": {
+        "inference_size": 1920,
+        "conf_threshold": 0.25,
+        "iou_threshold": 0.45,
+        "max_det": 300,
+        "augment": false
+      },
+      "display": {
+        "show_confidence": true,
+        "label_scale": 2
+      },
+      "defect_priority": [
+        "NG",
+        "HP_NG",
+        "QJ_NG",
+        "RJ_NG",
+        "LX_NG"
+      ],
+      "defect_code_map": {
+        "NG": "ng_fatal",
+        "HP_NG": "ng_repairable",
+        "QJ_NG": "ng_repairable",
+        "RJ_NG": "ng_repairable",
+        "LX_NG": "ng_repairable"
+      },
+      "capture": {
+        "save_per_frame": false,
+        "save_format": "png"
+      },
+      "vmodule_protocol_mapping": {
+        "pos2": {
+          "trigger_register": "0x3C",
+          "cmd_addr": "ED60",
+          "response_register": "0x3D",
+          "status_addr": "EW61"
+        },
+        "pos3": {
+          "trigger_register": "0x3E",
+          "cmd_addr": "ED62",
+          "response_register": "0x3F",
+          "status_addr": "EW63"
+        }
+      }
+    }
+  },
+  "multiframe_channels": [
+    {
+      "name": "pos2",
+      "camera_id": "pos2",
+      "model_id": "model_huade",
+      "frame_count": 4,
+      "cmd_addr": "ED60",
+      "status_addr": "EW61",
+      "result_addr": "EW61",
+      "count_addr": "EW0",
+      "time_addr": "EW1",
+      "frame_plan": [
+        {
+          "command": 1,
+          "model_id": "model_huade",
+          "status_code": 17,
+          "exposure": 30000,
+          "label": "pos2 frame 1"
+        },
+        {
+          "command": 2,
+          "model_id": "model_huade",
+          "status_code": 18,
+          "exposure": 30000,
+          "label": "pos2 frame 2"
+        },
+        {
+          "command": 3,
+          "model_id": "model_huade",
+          "status_code": 19,
+          "exposure": 30000,
+          "label": "pos2 frame 3"
+        },
+        {
+          "command": 4,
+          "model_id": "model_huade",
+          "status_code": 20,
+          "exposure": 30000,
+          "label": "pos2 frame 4"
+        }
+      ],
+      "result_policy": {
+        "defect_priority": [
+          "NG",
+          "HP_NG",
+          "QJ_NG",
+          "RJ_NG",
+          "LX_NG"
+        ],
+        "defect_code_map": {
+          "NG": "ng_fatal",
+          "HP_NG": "ng_repairable",
+          "QJ_NG": "ng_repairable",
+          "RJ_NG": "ng_repairable",
+          "LX_NG": "ng_repairable"
+        },
+        "result_codes": {
+          "ok": 7,
+          "ng_repairable": 6,
+          "ng_fatal": 5
+        },
+        "error_code": 255
+      },
+      "save_policy": {
+        "mode": "ng",
+        "image_format": "png",
+        "save_json": true
+      },
+      "reset_policy": {
+        "mode": "wait_plc_zero",
+        "clear_status_on_zero": false
+      },
+      "finalize_delay_ms": 50
+    },
+    {
+      "name": "pos3",
+      "camera_id": "pos3",
+      "model_id": "model_huade",
+      "frame_count": 1,
+      "cmd_addr": "ED62",
+      "status_addr": "EW63",
+      "result_addr": "EW63",
+      "count_addr": "EW10",
+      "time_addr": "EW11",
+      "frame_plan": [
+        {
+          "command": 1,
+          "model_id": "model_huade",
+          "status_code": 17,
+          "exposure": 40000,
+          "label": "pos3 frame 1"
+        }
+      ],
+      "result_policy": {
+        "defect_priority": [
+          "NG",
+          "HP_NG",
+          "QJ_NG",
+          "RJ_NG",
+          "LX_NG"
+        ],
+        "defect_code_map": {
+          "NG": "ng_fatal",
+          "HP_NG": "ng_repairable",
+          "QJ_NG": "ng_repairable",
+          "RJ_NG": "ng_repairable",
+          "LX_NG": "ng_repairable"
+        },
+        "result_codes": {
+          "ok": 7,
+          "ng_repairable": 6,
+          "ng_fatal": 5
+        },
+        "error_code": 255
+      },
+      "save_policy": {
+        "mode": "ng",
+        "image_format": "png",
+        "save_json": true
+      },
+      "reset_policy": {
+        "mode": "wait_plc_zero",
+        "clear_status_on_zero": false
+      },
+      "finalize_delay_ms": 50
+    }
+  ]
+}

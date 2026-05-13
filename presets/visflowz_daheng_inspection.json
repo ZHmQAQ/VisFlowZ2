@@ -1,0 +1,42 @@
+{
+  "name": "Daheng dual-station inspection",
+  "description": "Two Daheng industrial cameras, external PLC workflow, ACK/error/result event actions, and NG image/alarm rules.",
+  "plc_connections": [
+    { "name": "PLC1", "host": "192.168.124.168", "port": 502, "unit_id": 1, "timeout": 1.0 }
+  ],
+  "io_mappings": [
+    { "plc_name": "PLC1", "plc_addr": "M100", "vmodule_addr": "EX0", "description": "pos3 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M101", "vmodule_addr": "EX1", "description": "pos5 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M200", "vmodule_addr": "EY0", "description": "pos3 done" },
+    { "plc_name": "PLC1", "plc_addr": "M201", "vmodule_addr": "EY1", "description": "pos3 result" },
+    { "plc_name": "PLC1", "plc_addr": "M210", "vmodule_addr": "EY10", "description": "pos5 done" },
+    { "plc_name": "PLC1", "plc_addr": "M211", "vmodule_addr": "EY11", "description": "pos5 result" },
+    { "plc_name": "PLC1", "plc_addr": "D200", "vmodule_addr": "EW0", "description": "pos3 defect count" },
+    { "plc_name": "PLC1", "plc_addr": "D210", "vmodule_addr": "EW10", "description": "pos5 defect count" }
+  ],
+  "cameras": [
+    { "camera_id": "pos3", "camera_type": "daheng", "config": { "connection": { "serial_number": "EBP26010024", "trigger_mode": "software" }, "exposures": [40000, 30000] }, "exposure": 40000, "gain": 10.0 },
+    { "camera_id": "pos5", "camera_type": "daheng", "config": { "connection": { "serial_number": "EBP26010023", "trigger_mode": "software" }, "exposures": [[15000], [15000, 8000]] }, "exposure": 15000, "gain": 10.0 }
+  ],
+  "devices": [
+    { "device_id": "plc_receiver", "name": "PLC trigger receiver", "type": "tcp_server", "connection": { "host": "0.0.0.0", "port": 502 }, "protocol": "modbus", "enabled": true },
+    { "device_id": "plc_sender", "name": "PLC response sender", "type": "tcp", "connection": { "host": "192.168.124.168", "port": 502 }, "protocol": "modbus", "enabled": true }
+  ],
+  "detection_channels": [
+    { "name": "pos3", "trigger_addr": "EX0", "busy_addr": "VM100", "camera_id": "pos3", "model_id": "model_huade", "done_addr": "EY0", "result_addr": "EY1", "defect_count_addr": "EW0", "inference_time_addr": "EW1", "total_count_addr": "VD0", "ng_count_addr": "VD1" },
+    { "name": "pos5", "trigger_addr": "EX1", "busy_addr": "VM110", "camera_id": "pos5", "model_id": "model_huade", "done_addr": "EY10", "result_addr": "EY11", "defect_count_addr": "EW10", "inference_time_addr": "EW11", "total_count_addr": "VD10", "ng_count_addr": "VD11" }
+  ],
+  "event_actions": [
+    { "mapping_id": "pos3_ack", "name": "pos3 ACK", "event_type": "on_cam_ok", "event_source": "pos3", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 10, "enabled": true },
+    { "mapping_id": "pos3_err", "name": "pos3 error", "event_type": "on_cam_fail", "event_source": "pos3", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "fixed", "value": 255 }, "order_index": 20, "enabled": true },
+    { "mapping_id": "pos3_result", "name": "pos3 result", "event_type": "on_cycle_done", "event_source": "pos3", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "result" }, "order_index": 30, "enabled": true },
+    { "mapping_id": "pos5_ack", "name": "pos5 ACK", "event_type": "on_cam_ok", "event_source": "pos5", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 40, "enabled": true },
+    { "mapping_id": "pos5_err", "name": "pos5 error", "event_type": "on_cam_fail", "event_source": "pos5", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "fixed", "value": 255 }, "order_index": 50, "enabled": true },
+    { "mapping_id": "pos5_result", "name": "pos5 result", "event_type": "on_cycle_done", "event_source": "pos5", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "result" }, "order_index": 60, "enabled": true }
+  ],
+  "rules": [
+    { "rule_id": "pos3_ng_save", "name": "pos3 NG save and alarm", "trigger_source": "pos3.capture_done", "conditions": [{ "field": "is_ok", "operator": "==", "value": false }], "actions": [{ "type": "save_image", "target": "", "params": {} }, { "type": "trigger_alarm", "target": "", "params": { "message": "pos3 NG" } }], "priority": 20, "enabled": true },
+    { "rule_id": "pos5_ng_save", "name": "pos5 NG save and alarm", "trigger_source": "pos5.capture_done", "conditions": [{ "field": "is_ok", "operator": "==", "value": false }], "actions": [{ "type": "save_image", "target": "", "params": {} }, { "type": "trigger_alarm", "target": "", "params": { "message": "pos5 NG" } }], "priority": 20, "enabled": true }
+  ],
+  "strategy": { "model_id": "model_huade", "strategy_map": { "default": "ok_ng" } }
+}

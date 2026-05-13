@@ -1,0 +1,37 @@
+{
+  "name": "Dual USB inspection",
+  "description": "Two USB cameras for general inspection with PLC trigger/response, OK/NG rules, and result event actions.",
+  "plc_connections": [
+    { "name": "PLC1", "host": "127.0.0.1", "port": 503, "unit_id": 1, "timeout": 1.0 }
+  ],
+  "io_mappings": [
+    { "plc_name": "PLC1", "plc_addr": "M60", "vmodule_addr": "EX0", "description": "camera_1 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M62", "vmodule_addr": "EX1", "description": "camera_2 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M160", "vmodule_addr": "EY0", "description": "camera_1 done" },
+    { "plc_name": "PLC1", "plc_addr": "M162", "vmodule_addr": "EY10", "description": "camera_2 done" }
+  ],
+  "cameras": [
+    { "camera_id": "camera_1", "camera_type": "usb", "config": { "connection": { "index": 0, "width": 1920, "height": 1080 }, "exposures": [3000, 8000, 20000] }, "exposure": 5000, "gain": 5.0 },
+    { "camera_id": "camera_2", "camera_type": "usb", "config": { "connection": { "index": 1, "width": 1920, "height": 1080 }, "exposures": [3000, 8000, 20000] }, "exposure": 5000, "gain": 5.0 }
+  ],
+  "devices": [
+    { "device_id": "plc_receiver", "name": "PLC trigger receiver", "type": "tcp_server", "connection": { "host": "0.0.0.0", "port": 502 }, "protocol": "modbus", "enabled": true },
+    { "device_id": "plc_sender", "name": "PLC result sender", "type": "tcp", "connection": { "host": "127.0.0.1", "port": 503 }, "protocol": "modbus", "enabled": true }
+  ],
+  "detection_channels": [
+    { "name": "camera_1", "trigger_addr": "EX0", "busy_addr": "VM100", "camera_id": "camera_1", "model_id": "model_default", "done_addr": "EY0", "result_addr": "EY1", "defect_count_addr": "EW0", "inference_time_addr": "EW1" },
+    { "name": "camera_2", "trigger_addr": "EX1", "busy_addr": "VM110", "camera_id": "camera_2", "model_id": "model_default", "done_addr": "EY10", "result_addr": "EY11", "defect_count_addr": "EW10", "inference_time_addr": "EW11" }
+  ],
+  "event_actions": [
+    { "mapping_id": "cam1_ack", "name": "camera_1 ACK", "event_type": "on_cam_ok", "event_source": "camera_1", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 10, "enabled": true },
+    { "mapping_id": "cam1_result", "name": "camera_1 result", "event_type": "on_cycle_done", "event_source": "camera_1", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "result" }, "order_index": 20, "enabled": true },
+    { "mapping_id": "cam2_ack", "name": "camera_2 ACK", "event_type": "on_cam_ok", "event_source": "camera_2", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 30, "enabled": true },
+    { "mapping_id": "cam2_result", "name": "camera_2 result", "event_type": "on_cycle_done", "event_source": "camera_2", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "result" }, "order_index": 40, "enabled": true }
+  ],
+  "rules": [
+    { "rule_id": "cam1_ng_05", "name": "camera_1 fatal NG", "trigger_source": "camera_1.capture_done", "conditions": [{ "field": "summary_label", "operator": "in", "value": ["CL", "JS", "HH"] }], "actions": [{ "type": "send_command", "target": "plc_sender", "params": { "data": "3c0005" } }, { "type": "save_image", "target": "", "params": {} }], "priority": 30, "enabled": true },
+    { "rule_id": "cam1_ok", "name": "camera_1 OK", "trigger_source": "camera_1.capture_done", "conditions": [{ "field": "is_ok", "operator": "==", "value": true }], "actions": [{ "type": "send_command", "target": "plc_sender", "params": { "data": "3c0007" } }], "priority": 10, "enabled": true },
+    { "rule_id": "cam2_ng_05", "name": "camera_2 fatal NG", "trigger_source": "camera_2.capture_done", "conditions": [{ "field": "summary_label", "operator": "in", "value": ["CL", "JS", "HH"] }], "actions": [{ "type": "send_command", "target": "plc_sender", "params": { "data": "3e0005" } }, { "type": "save_image", "target": "", "params": {} }], "priority": 30, "enabled": true },
+    { "rule_id": "cam2_ok", "name": "camera_2 OK", "trigger_source": "camera_2.capture_done", "conditions": [{ "field": "is_ok", "operator": "==", "value": true }], "actions": [{ "type": "send_command", "target": "plc_sender", "params": { "data": "3e0007" } }], "priority": 10, "enabled": true }
+  ]
+}

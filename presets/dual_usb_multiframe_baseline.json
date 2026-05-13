@@ -1,0 +1,173 @@
+{
+  "name": "dual_usb_multiframe_baseline",
+  "description": "Baseline polling workflow: USB camera 0 uses D60/D61, USB camera 1 uses D62/D63. Commands 1/2 capture frames, ACK 11/12, final result 7/6/5.",
+  "plc_connections": [
+    {
+      "name": "PLC1",
+      "host": "192.168.1.10",
+      "port": 502,
+      "unit_id": 1,
+      "timeout": 1.0
+    }
+  ],
+  "io_mappings": [
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D60",
+      "vmodule_addr": "ED0",
+      "description": "Cam1 command: 1=frame1, 2=frame2",
+      "enabled": true
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D61",
+      "vmodule_addr": "EW0",
+      "description": "Cam1 ACK/result: 11/12 then 7/6/5",
+      "enabled": true
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D62",
+      "vmodule_addr": "ED2",
+      "description": "Cam2 command: 1=frame1, 2=frame2",
+      "enabled": true
+    },
+    {
+      "plc_name": "PLC1",
+      "plc_addr": "D63",
+      "vmodule_addr": "EW2",
+      "description": "Cam2 ACK/result: 11/12 then 7/6/5",
+      "enabled": true
+    }
+  ],
+  "detection_channels": [],
+  "multiframe_channels": [
+    {
+      "name": "cam1_baseline",
+      "camera_id": "usb_cam1",
+      "model_id": "",
+      "frame_count": 2,
+      "cmd_addr": "ED0",
+      "status_addr": "EW0",
+      "result_addr": "",
+      "count_addr": "VD10",
+      "time_addr": "VD11",
+      "frame_plan": [
+        {
+          "command": 1,
+          "model_id": "cam1_frame1_model",
+          "status_code": 11,
+          "label": "cam1 frame 1"
+        },
+        {
+          "command": 2,
+          "model_id": "cam1_frame2_model",
+          "status_code": 12,
+          "label": "cam1 frame 2"
+        }
+      ],
+      "result_policy": {
+        "defect_priority": ["CL", "JS", "HH", "YW"],
+        "defect_code_map": {
+          "CL": "ng_fatal",
+          "JS": "ng_fatal",
+          "HH": "ng_fatal",
+          "YW": "ng_repairable"
+        },
+        "result_codes": {
+          "ok": 7,
+          "ng_repairable": 6,
+          "ng_fatal": 5
+        }
+      },
+      "save_policy": {
+        "mode": "all",
+        "image_format": "jpg",
+        "save_json": true
+      },
+      "reset_policy": {
+        "mode": "wait_plc_zero",
+        "clear_status_on_zero": false
+      },
+      "finalize_delay_ms": 50
+    },
+    {
+      "name": "cam2_baseline",
+      "camera_id": "usb_cam2",
+      "model_id": "",
+      "frame_count": 2,
+      "cmd_addr": "ED2",
+      "status_addr": "EW2",
+      "result_addr": "",
+      "count_addr": "VD20",
+      "time_addr": "VD21",
+      "frame_plan": [
+        {
+          "command": 1,
+          "model_id": "cam2_frame1_model",
+          "status_code": 11,
+          "label": "cam2 frame 1"
+        },
+        {
+          "command": 2,
+          "model_id": "cam2_frame2_model",
+          "status_code": 12,
+          "label": "cam2 frame 2"
+        }
+      ],
+      "result_policy": {
+        "defect_priority": ["CL", "JS", "HH", "YW"],
+        "defect_code_map": {
+          "CL": "ng_fatal",
+          "JS": "ng_fatal",
+          "HH": "ng_fatal",
+          "YW": "ng_repairable"
+        },
+        "result_codes": {
+          "ok": 7,
+          "ng_repairable": 6,
+          "ng_fatal": 5
+        }
+      },
+      "save_policy": {
+        "mode": "all",
+        "image_format": "jpg",
+        "save_json": true
+      },
+      "reset_policy": {
+        "mode": "wait_plc_zero",
+        "clear_status_on_zero": false
+      },
+      "finalize_delay_ms": 50
+    }
+  ],
+  "cameras": [
+    {
+      "camera_id": "usb_cam1",
+      "camera_type": "usb",
+      "auto_open": true,
+      "config": {
+        "auto_open": true,
+        "connection": {
+          "index": 0,
+          "width": 640,
+          "height": 480
+        }
+      }
+    },
+    {
+      "camera_id": "usb_cam2",
+      "camera_type": "usb",
+      "auto_open": true,
+      "config": {
+        "auto_open": true,
+        "connection": {
+          "index": 1,
+          "width": 640,
+          "height": 480
+        }
+      }
+    }
+  ],
+  "strategy": null
+}

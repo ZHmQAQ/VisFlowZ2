@@ -1,0 +1,31 @@
+{
+  "name": "Hikvision dual-station dataset collection",
+  "description": "Two Hikvision cameras, external PLC trigger, per-frame PNG saving, ACK/error event actions.",
+  "plc_connections": [
+    { "name": "PLC1", "host": "192.168.124.168", "port": 502, "unit_id": 1, "timeout": 1.0 }
+  ],
+  "io_mappings": [
+    { "plc_name": "PLC1", "plc_addr": "M100", "vmodule_addr": "EX0", "description": "pos3 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M101", "vmodule_addr": "EX1", "description": "pos5 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M200", "vmodule_addr": "EY0", "description": "pos3 done" },
+    { "plc_name": "PLC1", "plc_addr": "M210", "vmodule_addr": "EY10", "description": "pos5 done" }
+  ],
+  "cameras": [
+    { "camera_id": "pos3", "camera_type": "hikvision", "config": { "connection": { "serial_number": "DA8290709", "trigger_mode": "software" }, "exposures": [40000, 30000] }, "exposure": 40000, "gain": 10.0 },
+    { "camera_id": "pos5", "camera_type": "hikvision", "config": { "connection": { "serial_number": "DA8290609", "trigger_mode": "software" }, "exposures": [[15000], [15000, 8000]] }, "exposure": 15000, "gain": 10.0 }
+  ],
+  "devices": [
+    { "device_id": "plc_receiver", "name": "PLC trigger receiver", "type": "tcp_server", "connection": { "host": "0.0.0.0", "port": 502 }, "protocol": "modbus", "enabled": true },
+    { "device_id": "plc_sender", "name": "PLC response sender", "type": "tcp", "connection": { "host": "192.168.124.168", "port": 502 }, "protocol": "modbus", "enabled": true }
+  ],
+  "detection_channels": [],
+  "event_actions": [
+    { "mapping_id": "pos3_save", "name": "pos3 save frame", "event_type": "on_cam_ok", "event_source": "pos3", "action_type": "save_image", "action_target": "pos3", "action_params": { "format": "png" }, "order_index": 5, "enabled": true },
+    { "mapping_id": "pos3_ack", "name": "pos3 ACK", "event_type": "on_cam_ok", "event_source": "pos3", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 10, "enabled": true },
+    { "mapping_id": "pos3_err", "name": "pos3 error", "event_type": "on_cam_fail", "event_source": "pos3", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "fixed", "value": 255 }, "order_index": 20, "enabled": true },
+    { "mapping_id": "pos5_save", "name": "pos5 save frame", "event_type": "on_cam_ok", "event_source": "pos5", "action_type": "save_image", "action_target": "pos5", "action_params": { "format": "png" }, "order_index": 35, "enabled": true },
+    { "mapping_id": "pos5_ack", "name": "pos5 ACK", "event_type": "on_cam_ok", "event_source": "pos5", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 40, "enabled": true },
+    { "mapping_id": "pos5_err", "name": "pos5 error", "event_type": "on_cam_fail", "event_source": "pos5", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "fixed", "value": 255 }, "order_index": 50, "enabled": true }
+  ],
+  "rules": []
+}

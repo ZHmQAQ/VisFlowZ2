@@ -1,0 +1,31 @@
+{
+  "name": "Dual USB dataset collection",
+  "description": "Two USB cameras for dataset collection, external trigger, per-frame PNG saving, ACK/error responses, no model dependency.",
+  "plc_connections": [
+    { "name": "PLC1", "host": "127.0.0.1", "port": 503, "unit_id": 1, "timeout": 1.0 }
+  ],
+  "io_mappings": [
+    { "plc_name": "PLC1", "plc_addr": "M60", "vmodule_addr": "EX0", "description": "camera_1 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M62", "vmodule_addr": "EX1", "description": "camera_2 trigger" },
+    { "plc_name": "PLC1", "plc_addr": "M160", "vmodule_addr": "EY0", "description": "camera_1 done" },
+    { "plc_name": "PLC1", "plc_addr": "M162", "vmodule_addr": "EY10", "description": "camera_2 done" }
+  ],
+  "cameras": [
+    { "camera_id": "camera_1", "camera_type": "usb", "config": { "connection": { "index": 0, "width": 1920, "height": 1080 }, "exposures": [3000, 8000, 20000] }, "exposure": 5000, "gain": 5.0 },
+    { "camera_id": "camera_2", "camera_type": "usb", "config": { "connection": { "index": 1, "width": 1920, "height": 1080 }, "exposures": [3000, 8000, 20000] }, "exposure": 5000, "gain": 5.0 }
+  ],
+  "devices": [
+    { "device_id": "plc_receiver", "name": "PLC trigger receiver", "type": "tcp_server", "connection": { "host": "0.0.0.0", "port": 502 }, "protocol": "modbus", "enabled": true },
+    { "device_id": "plc_sender", "name": "PLC result sender", "type": "tcp", "connection": { "host": "127.0.0.1", "port": 503 }, "protocol": "modbus", "enabled": true }
+  ],
+  "detection_channels": [],
+  "event_actions": [
+    { "mapping_id": "cam1_save", "name": "camera_1 save frame", "event_type": "on_cam_ok", "event_source": "camera_1", "action_type": "save_image", "action_target": "camera_1", "action_params": { "format": "png" }, "order_index": 5, "enabled": true },
+    { "mapping_id": "cam1_ack", "name": "camera_1 ACK", "event_type": "on_cam_ok", "event_source": "camera_1", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 10, "enabled": true },
+    { "mapping_id": "cam1_err", "name": "camera_1 error", "event_type": "on_cam_fail", "event_source": "camera_1", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "fixed", "value": 255 }, "order_index": 20, "enabled": true },
+    { "mapping_id": "cam2_save", "name": "camera_2 save frame", "event_type": "on_cam_ok", "event_source": "camera_2", "action_type": "save_image", "action_target": "camera_2", "action_params": { "format": "png" }, "order_index": 35, "enabled": true },
+    { "mapping_id": "cam2_ack", "name": "camera_2 ACK", "event_type": "on_cam_ok", "event_source": "camera_2", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "ack" }, "order_index": 40, "enabled": true },
+    { "mapping_id": "cam2_err", "name": "camera_2 error", "event_type": "on_cam_fail", "event_source": "camera_2", "action_type": "write_register", "action_target": "plc_sender", "action_params": { "value_type": "fixed", "value": 255 }, "order_index": 50, "enabled": true }
+  ],
+  "rules": []
+}
