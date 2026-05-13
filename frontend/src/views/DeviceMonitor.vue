@@ -119,6 +119,7 @@ const editIndex = ref(-1)
 const loading = ref(false)
 const autoRefresh = ref(false)
 let _timer = null
+let _refreshing = false
 
 const defaultVar = () => ({ name: '', prefix: 'EX', num: 0, comment: '', _value: null, _newValue: 0 })
 const varForm = ref(defaultVar())
@@ -146,9 +147,11 @@ function saveToStorage() {
 
 async function refreshValues() {
   if (variables.value.length === 0) return
+  if (document.hidden || _refreshing) return
+  _refreshing = true
   loading.value = true
   try {
-    const addrs = variables.value.map(v => `${v.prefix}${v.num}`)
+    const addrs = [...new Set(variables.value.map(v => `${v.prefix}${v.num}`))].slice(0, 256)
     const data = await bulkReadDevice(addrs)
     variables.value.forEach(v => {
       const key = `${v.prefix}${v.num}`
@@ -156,7 +159,10 @@ async function refreshValues() {
         v._value = data[key]
       }
     })
-  } catch {} finally { loading.value = false }
+  } catch {} finally {
+    loading.value = false
+    _refreshing = false
+  }
 }
 
 function openAdd() {
@@ -209,7 +215,7 @@ async function doWrite(row, val) {
 function toggleAuto(val) {
   if (_timer) { clearInterval(_timer); _timer = null }
   if (val) {
-    _timer = setInterval(refreshValues, 500)
+    _timer = setInterval(refreshValues, 2000)
   }
 }
 
@@ -258,7 +264,9 @@ async function autoInitFromSystem() {
     for (const mf of mfChannels) {
       addVar(`${mf.name} 命令`, mf.cmd_addr, `多帧通道 ${mf.name}`)
       addVar(`${mf.name} 状态`, mf.status_addr, `多帧通道 ${mf.name}`)
-      addVar(`${mf.name} 结果`, mf.result_addr, `多帧通道 ${mf.name}`)
+      if (mf.result_addr) addVar(`${mf.name} 结果`, mf.result_addr, `多帧通道 ${mf.name}`)
+      if (mf.count_addr) addVar(`${mf.name} 缺陷数`, mf.count_addr, `多帧通道 ${mf.name}`)
+      if (mf.time_addr) addVar(`${mf.name} 耗时`, mf.time_addr, `多帧通道 ${mf.name}`)
     }
 
     if (vars.length > 0) {

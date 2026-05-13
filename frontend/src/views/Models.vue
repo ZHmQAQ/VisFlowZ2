@@ -2,7 +2,12 @@
   <div class="page-container">
     <div class="page-header">
       <h2>模型管理</h2>
-      <el-button type="primary" :icon="Plus" @click="showLoad = true">加载模型</el-button>
+      <div style="display:flex;gap:8px">
+        <el-upload :before-upload="handleModelUpload" :show-file-list="false" accept=".pt,.onnx,.engine,.pth">
+          <el-button :icon="Upload" :loading="uploading">上传权重</el-button>
+        </el-upload>
+        <el-button type="primary" :icon="Plus" @click="showLoad = true">加载模型</el-button>
+      </div>
     </div>
 
     <!-- Loaded models -->
@@ -113,8 +118,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
-import { listWeights, loadModel, unloadModel, listModels, setStrategy } from '../api'
+import { Plus, Upload } from '@element-plus/icons-vue'
+import { listWeights, loadModel, unloadModel, listModels, setStrategy, uploadModel } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const models = ref([])
@@ -122,6 +127,7 @@ const weights = ref([])
 const showLoad = ref(false)
 const showStrategy = ref(false)
 const loading = ref(false)
+const uploading = ref(false)
 const loadForm = ref({ model_id: '', filename: '', engine_type: 'yolo' })
 const strategyModelId = ref('')
 const strategyRows = ref([])
@@ -129,6 +135,18 @@ const strategyRows = ref([])
 async function refresh() {
   try { models.value = await listModels() } catch {}
   try { weights.value = await listWeights() } catch {}
+}
+
+function handleModelUpload(file) {
+  uploading.value = true
+  uploadModel(file)
+    .then((res) => {
+      ElMessage.success(`权重已上传: ${res.filename}`)
+      refresh()
+    })
+    .catch(() => {})
+    .finally(() => { uploading.value = false })
+  return false
 }
 
 async function doLoad() {

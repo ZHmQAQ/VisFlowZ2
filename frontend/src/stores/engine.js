@@ -8,7 +8,7 @@ export const useEngineStore = defineStore('engine', () => {
     scan_count: 0,
     last_scan_ms: 0,
     target_cycle_ms: 20,
-    plc_clients: 0,
+    plc_connections: {},
     io_mappings: 0,
     program_blocks: 0,
   })
@@ -16,14 +16,23 @@ export const useEngineStore = defineStore('engine', () => {
   const running = computed(() => status.value.running)
   const scanCount = computed(() => status.value.scan_count)
   const lastScanMs = computed(() => status.value.last_scan_ms)
+  const plcConnectionCount = computed(() => Object.keys(status.value.plc_connections || {}).length)
+  const plcConnectedCount = computed(
+    () => Object.values(status.value.plc_connections || {}).filter(Boolean).length
+  )
 
   let _pollTimer = null
+  let _inFlight = false
 
   async function refresh() {
+    if (document.hidden || _inFlight) return
+    _inFlight = true
     try {
       const data = await getEngineStatus()
       Object.assign(status.value, data)
-    } catch { /* ignore */ }
+    } catch { /* ignore */ } finally {
+      _inFlight = false
+    }
   }
 
   function startPolling(interval = 1000) {
@@ -39,5 +48,15 @@ export const useEngineStore = defineStore('engine', () => {
     }
   }
 
-  return { status, running, scanCount, lastScanMs, refresh, startPolling, stopPolling }
+  return {
+    status,
+    running,
+    scanCount,
+    lastScanMs,
+    plcConnectionCount,
+    plcConnectedCount,
+    refresh,
+    startPolling,
+    stopPolling,
+  }
 })

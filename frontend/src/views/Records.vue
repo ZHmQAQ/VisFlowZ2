@@ -13,6 +13,25 @@
       </div>
     </div>
 
+    <div style="display:flex;gap:12px;margin-bottom:16px">
+      <el-card shadow="never" style="width:160px">
+        <div style="font-size:24px;font-weight:700;color:#4fc3f7">{{ stats.total_count || 0 }}</div>
+        <div style="font-size:12px;color:#8892b0">今日总数</div>
+      </el-card>
+      <el-card shadow="never" style="width:160px">
+        <div style="font-size:24px;font-weight:700;color:#66bb6a">{{ stats.ok_count || 0 }}</div>
+        <div style="font-size:12px;color:#8892b0">OK</div>
+      </el-card>
+      <el-card shadow="never" style="width:160px">
+        <div style="font-size:24px;font-weight:700;color:#ef5350">{{ stats.ng_count || 0 }}</div>
+        <div style="font-size:12px;color:#8892b0">NG</div>
+      </el-card>
+      <el-card shadow="never" style="width:160px">
+        <div style="font-size:24px;font-weight:700;color:#e0e6ff">{{ stats.ok_rate || 0 }}%</div>
+        <div style="font-size:12px;color:#8892b0">OK 率</div>
+      </el-card>
+    </div>
+
     <el-table :data="records" stripe style="width:100%">
       <el-table-column prop="created_at" label="时间" width="180">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
@@ -32,6 +51,11 @@
         <template #default="{ row }">
           <el-button v-if="row.image_path" size="small" text type="primary" @click="viewImage(row)">查看</el-button>
           <span v-else style="color:#666">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="80">
+        <template #default="{ row }">
+          <el-button size="small" text type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
       <el-table-column />
@@ -56,12 +80,14 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getRecords } from '../api'
+import { deleteRecord, getRecords, getRecordStatistics } from '../api'
+import { ElMessageBox, ElMessage } from 'element-plus'
 
 const records = ref([])
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
+const stats = ref({})
 const filter = ref({ is_ok: '', camera_id: '', channel_name: '' })
 const showImage = ref(false)
 const imageUrl = ref('')
@@ -75,6 +101,9 @@ async function load() {
     })
     records.value = data.items
     total.value = data.total
+    stats.value = await getRecordStatistics({
+      camera_id: filter.value.camera_id,
+    })
   } catch {}
 }
 
@@ -87,6 +116,13 @@ function formatTime(iso) {
 function viewImage(row) {
   imageUrl.value = `/data/${row.image_path}`
   showImage.value = true
+}
+
+async function remove(row) {
+  await ElMessageBox.confirm(`确认删除记录 #${row.id}？`, '确认', { type: 'warning' })
+  await deleteRecord(row.id)
+  ElMessage.success('记录已删除')
+  load()
 }
 
 onMounted(load)

@@ -1,4 +1,6 @@
 // VModule 全局样式 — 工业深色主题
+@use "sass:color";
+
 $bg-dark: #0a0e27;
 $bg-sidebar: #0f1640;
 $bg-content: #111738;
@@ -57,8 +59,8 @@ body {
 .el-table {
   --el-table-bg-color: #{$bg-card};
   --el-table-tr-bg-color: #{$bg-card};
-  --el-table-header-bg-color: #{darken($bg-card, 3%)};
-  --el-table-row-hover-bg-color: #{lighten($bg-card, 5%)};
+  --el-table-header-bg-color: #{color.adjust($bg-card, $lightness: -3%)};
+  --el-table-row-hover-bg-color: #{color.adjust($bg-card, $lightness: 5%)};
   --el-table-text-color: #{$text-primary};
   --el-table-header-text-color: #{$text-secondary};
   --el-table-border-color: #{$border-color};
@@ -75,13 +77,13 @@ body {
 
 .el-input__wrapper,
 .el-textarea__inner {
-  background-color: darken($bg-card, 3%) !important;
+  background-color: color.adjust($bg-card, $lightness: -3%) !important;
   box-shadow: 0 0 0 1px $border-color inset !important;
   color: $text-primary !important;
 }
 
 .el-select__wrapper {
-  background-color: darken($bg-card, 3%) !important;
+  background-color: color.adjust($bg-card, $lightness: -3%) !important;
   box-shadow: 0 0 0 1px $border-color inset !important;
 }
 
@@ -144,4 +146,4 @@ body {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: $border-color; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: lighten($border-color, 10%); }
+::-webkit-scrollbar-thumb:hover { background: color.adjust($border-color, $lightness: 10%); }

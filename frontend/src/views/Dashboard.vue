@@ -4,7 +4,7 @@
       <!-- 状态概览卡片 -->
       <el-card class="stat-card">
         <div class="stat-value" :style="{ color: engine.running ? '#66bb6a' : '#ef5350' }">
-          {{ engine.running ? 'RUN' : 'STOP' }}
+          {{ engine.running ? '运行中' : '已停止' }}
         </div>
         <div class="stat-label">扫描引擎</div>
       </el-card>
@@ -17,8 +17,8 @@
         <div class="stat-label">累计扫描</div>
       </el-card>
       <el-card class="stat-card">
-        <div class="stat-value">{{ engine.status.plc_clients || 0 }}</div>
-        <div class="stat-label">PLC 连接</div>
+        <div class="stat-value">{{ plcSummary }}</div>
+        <div class="stat-label">PLC 在线/总数</div>
       </el-card>
       <el-card class="stat-card">
         <div class="stat-value">{{ engine.status.io_mappings || 0 }}</div>
@@ -42,14 +42,45 @@
             停止
           </el-button>
           <el-divider direction="vertical" />
+          <el-select
+            v-model="selectedPreset"
+            placeholder="内置预设"
+            filterable
+            clearable
+            style="width: 220px"
+          >
+            <el-option
+              v-for="item in presetOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            >
+              <div style="display:flex;justify-content:space-between;gap:12px">
+                <span>{{ item.name }}</span>
+                <span style="color:#8892b0;font-size:12px">{{ presetStats(item) }}</span>
+              </div>
+            </el-option>
+          </el-select>
+          <el-button type="warning" :icon="Upload" :disabled="!selectedPreset" @click="doLoadNamedPreset" :loading="presetLoading">
+            应用预设
+          </el-button>
           <el-upload
             :before-upload="handlePresetUpload"
             :show-file-list="false"
             accept=".json"
           >
-            <el-button :icon="Upload">加载预设</el-button>
+            <el-button :icon="Upload">导入预设 JSON</el-button>
           </el-upload>
           <el-button :icon="Download" @click="doSavePreset" :loading="saving">保存预设</el-button>
+          <el-divider direction="vertical" />
+          <el-upload
+            :before-upload="handleConfigUpload"
+            :show-file-list="false"
+            accept=".json"
+          >
+            <el-button :icon="Upload">导入完整配置</el-button>
+          </el-upload>
+          <el-button :icon="Download" @click="doExportConfig">导出完整配置</el-button>
         </div>
       </el-card>
 
@@ -113,7 +144,10 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { VideoPlay, VideoPause, Upload, Download, Refresh } from '@element-plus/icons-vue'
 import { useEngineStore } from '../stores/engine'
 import {
+  exportConfig,
+  importConfig,
   startEngine, stopEngine, loadPreset, savePreset,
+  listPresets, loadNamedPreset,
   bulkReadDevice, listCameras, captureFrame, getFrameUrl,
 } from '../api'
 import { ElMessage } from 'element-plus'
@@ -121,6 +155,14 @@ import { ElMessage } from 'element-plus'
 const engine = useEngineStore()
 const loading = ref(false)
 const saving = ref(false)
+const presetLoading = ref(false)
+const presetOptions = ref([])
+const selectedPreset = ref('')
+const plcSummary = computed(() => {
+  const total = Number(engine.plcConnectionCount || 0)
+  const online = Number(engine.plcConnectedCount || 0)
+  return total ? `${online}/${total}` : '0'
+})
 
 // ---- 系统软元件 ----
 const systemDevices = ref([
@@ -133,15 +175,20 @@ const systemDevices = ref([
 ])
 
 let _sysTimer = null
+let _systemRefreshing = false
 
 async function refreshSystem() {
+  if (document.hidden || _systemRefreshing) return
+  _systemRefreshing = true
   try {
     const addrs = systemDevices.value.map(d => d.address)
     const data = await bulkReadDevice(addrs)
     systemDevices.value.forEach(d => {
       if (data[d.address] !== undefined) d.value = data[d.address]
     })
-  } catch {}
+  } catch {} finally {
+    _systemRefreshing = false
+  }
 }
 
 // ---- 引擎控制 ----
@@ -164,14 +211,65 @@ async function doStop() {
 }
 
 // ---- 预设 ----
+function presetStats(item) {
+  return `${item.plc_connections} PLC / ${item.io_mappings} IO / ${item.detection_channels + item.multiframe_channels} 通道`
+}
+
+async function refreshPresets() {
+  try {
+    presetOptions.value = await listPresets()
+    if (!selectedPreset.value && presetOptions.value.length) {
+      selectedPreset.value = presetOptions.value[0].id
+    }
+  } catch {
+    presetOptions.value = []
+  }
+}
+
+function presetSuccessMessage(res) {
+  return `预设已加载: ${res.plc_connections} PLC, ${res.io_mappings} 映射, ${res.detection_channels + res.multiframe_channels} 通道, ${res.cameras} 相机`
+}
+
+function configSuccessMessage(result) {
+  const stats = result?.stats || {}
+  const countOf = (name) => stats[name]?.added || 0
+  return `配置已导入: ${countOf('plc_connections')} PLC, ${countOf('io_mappings')} 映射, ${countOf('detection_channels') + countOf('multiframe_channels')} 通道`
+}
+
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function doLoadNamedPreset() {
+  if (!selectedPreset.value) return
+  presetLoading.value = true
+  try {
+    const res = await loadNamedPreset(selectedPreset.value)
+    ElMessage.success(presetSuccessMessage(res))
+    engine.refresh()
+    refreshCameras()
+  } catch {
+    ElMessage.error('加载预设失败')
+  } finally {
+    presetLoading.value = false
+  }
+}
+
 function handlePresetUpload(file) {
   const reader = new FileReader()
   reader.onload = async (e) => {
     try {
       const preset = JSON.parse(e.target.result)
       const res = await loadPreset(preset)
-      ElMessage.success(`预设已加载: ${res.plc_connections} PLC, ${res.io_mappings} 映射, ${res.detection_channels} 通道`)
+      ElMessage.success(presetSuccessMessage(res))
       engine.refresh()
+      refreshCameras()
     } catch {
       ElMessage.error('预设文件解析失败')
     }
@@ -184,13 +282,7 @@ async function doSavePreset() {
   saving.value = true
   try {
     const data = await savePreset()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `vmodule_preset_${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadJson(data, `vmodule_preset_${new Date().toISOString().slice(0, 10)}.json`)
     ElMessage.success('预设已保存')
   } catch {
     ElMessage.error('保存预设失败')
@@ -199,16 +291,50 @@ async function doSavePreset() {
   }
 }
 
+async function doExportConfig() {
+  try {
+    const data = await exportConfig()
+    downloadJson(data, `vmodule_config_${new Date().toISOString().slice(0, 10)}.json`)
+    ElMessage.success('完整配置已导出')
+  } catch {
+    ElMessage.error('导出完整配置失败')
+  }
+}
+
+function handleConfigUpload(file) {
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    try {
+      const config = JSON.parse(e.target.result)
+      const res = await importConfig(config)
+      ElMessage.success(configSuccessMessage(res))
+      await Promise.allSettled([
+        engine.refresh(),
+        refreshPresets(),
+        refreshSystem(),
+        refreshCameras(),
+      ])
+    } catch {
+      ElMessage.error('完整配置文件解析失败')
+    }
+  }
+  reader.readAsText(file)
+  return false
+}
+
 // ---- 实时监控 ----
 const cameras = ref([])
 const camFrames = ref({})
-const camAutoRefresh = ref(true)
+const camAutoRefresh = ref(false)
 let _camTimer = null
 let _frameCounter = 0
+let _cameraRefreshing = false
 
 const openCameras = computed(() => cameras.value.filter(c => c.is_open))
 
 async function refreshCameras() {
+  if (document.hidden || _cameraRefreshing) return
+  _cameraRefreshing = true
   try {
     cameras.value = await listCameras()
   } catch {}
@@ -220,22 +346,25 @@ async function refreshCameras() {
       camFrames.value[cam.camera_id] = getFrameUrl(cam.camera_id) + '?t=' + _frameCounter
     } catch {}
   }
+  _cameraRefreshing = false
 }
 
 function toggleCamRefresh(val) {
   if (_camTimer) { clearInterval(_camTimer); _camTimer = null }
   if (val) {
-    _camTimer = setInterval(refreshCameras, 2000)
+    _camTimer = setInterval(refreshCameras, 3000)
   }
 }
 
 // ---- 生命周期 ----
 onMounted(() => {
+  refreshPresets()
   refreshSystem()
-  _sysTimer = setInterval(refreshSystem, 2000)
+  _sysTimer = setInterval(refreshSystem, 5000)
+  // 实时监控:进页面无条件拉一次相机列表(否则永远显示"暂无已打开的相机")
   refreshCameras()
   if (camAutoRefresh.value) {
-    _camTimer = setInterval(refreshCameras, 2000)
+    _camTimer = setInterval(refreshCameras, 3000)
   }
 })
 
