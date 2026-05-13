@@ -15,7 +15,7 @@ if __name__ == "__main__":
             host=settings.HOST,
             port=settings.PORT,
             reload=False,
-            access_log=True,
+            access_log=False,
             log_config={
                 "version": 1,
                 "formatters": {"access": {"format": _ACCESS_FMT, "datefmt": "%Y-%m-%d %H:%M:%S"}},
@@ -30,7 +30,7 @@ if __name__ == "__main__":
             port=settings.PORT,
             reload=settings.DEBUG,
             reload_dirs=["app"] if settings.DEBUG else None,
-            access_log=True,
+            access_log=False,
             log_config={
                 "version": 1,
                 "formatters": {"access": {"format": _ACCESS_FMT, "datefmt": "%Y-%m-%d %H:%M:%S"}},
