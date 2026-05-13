@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.core.camera.manager import camera_manager
+from app.core.persistence import schedule_save
 
 logger = logging.getLogger("vmodule.api.camera")
 router = APIRouter(prefix="/camera", tags=["Camera"])
@@ -49,6 +50,7 @@ async def add_camera(req: CameraAddRequest):
     ok = await camera_manager.add_camera(req.camera_id, req.camera_type, config)
     if not ok:
         raise HTTPException(400, f"Failed to add camera [{req.camera_id}]")
+    schedule_save()
     return {"ok": True, "camera_id": req.camera_id}
 
 
@@ -58,6 +60,7 @@ async def remove_camera(camera_id: str):
     if not ok:
         raise HTTPException(404, f"Camera [{camera_id}] not found")
     _latest_frames.pop(camera_id, None)
+    schedule_save()
     return {"ok": True}
 
 
@@ -147,6 +150,7 @@ async def update_config(camera_id: str, req: CameraConfigUpdate):
         vcam.exposure = req.exposure
     if req.gain is not None:
         vcam.gain = req.gain
+    schedule_save()
     return {"ok": True}
 
 

@@ -1,6 +1,9 @@
 """系统管理 API — 日志/设置/检测记录"""
+from datetime import datetime
+from typing import Optional
+
 from fastapi import APIRouter, Query
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, and_
 
 from app.db.database import async_session
 from app.db.models import DetectionRecord
@@ -108,3 +111,62 @@ async def api_list_records(
                 for r in rows
             ],
         }
+
+
+@router.get("/records/statistics")
+async def api_record_statistics(
+    camera_id: str = "",
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+):
+    if not end_time:
+        end_time = datetime.now()
+    if not start_time:
+        start_time = end_time.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    conditions = [
+        DetectionRecord.created_at >= start_time,
+        DetectionRecord.created_at <= end_time,
+    ]
+    if camera_id:
+        conditions.append(DetectionRecord.camera_id == camera_id)
+
+    async with async_session() as session:
+        total = (await session.execute(
+            select(func.count(DetectionRecord.id)).where(and_(*conditions))
+        )).scalar() or 0
+        ok_count = (await session.execute(
+            select(func.count(DetectionRecord.id)).where(
+                and_(*conditions, DetectionRecord.is_ok == True)
+            )
+        )).scalar() or 0
+        ng_count = total - ok_count
+
+        by_camera_rows = (await session.execute(
+            select(DetectionRecord.camera_id, func.count(DetectionRecord.id))
+            .where(and_(*conditions))
+            .group_by(DetectionRecord.camera_id)
+        )).all()
+
+    return {
+        "total_count": total,
+        "ok_count": ok_count,
+        "ng_count": ng_count,
+        "ok_rate": round(ok_count / total * 100, 2) if total else 0,
+        "by_camera": {row[0] or "unknown": row[1] for row in by_camera_rows},
+        "time_range": {"start": start_time.isoformat(), "end": end_time.isoformat()},
+    }
+
+
+@router.delete("/records/{record_id}")
+async def api_delete_record(record_id: int):
+    async with async_session() as session:
+        result = await session.execute(
+            select(DetectionRecord).where(DetectionRecord.id == record_id)
+        )
+        record = result.scalar_one_or_none()
+        if not record:
+            return {"message": "记录不存在"}
+        await session.delete(record)
+        await session.commit()
+    return {"message": "记录已删除"}

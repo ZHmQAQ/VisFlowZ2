@@ -9,7 +9,10 @@ PLC 连接 & I/O 映射配置 API
 """
 
 from __future__ import annotations
+import json
 import logging
+import re
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -19,6 +22,7 @@ from app.core.persistence import schedule_save as _schedule_save
 
 logger = logging.getLogger("vmodule.api.plc")
 router = APIRouter(prefix="/plc", tags=["PLC"])
+PRESETS_DIR = Path(__file__).resolve().parents[3] / "presets"
 
 
 def _auto_save():
@@ -63,6 +67,31 @@ class DeviceWriteRequest(BaseModel):
 class DeviceBulkReadRequest(BaseModel):
     """批量读取请求"""
     addresses: List[str] = Field(..., description="地址列表")
+
+
+class EngineConfigUpdate(BaseModel):
+    """扫描引擎运行时参数"""
+    target_cycle_ms: int = Field(default=20, ge=5, le=1000)
+    modbus_timeout: float = Field(default=1.0, ge=0.1, le=10.0)
+
+
+def _serialize_multiframe_channel(ch) -> dict:
+    return {
+        "name": ch.name,
+        "camera_id": ch.camera_id,
+        "model_id": ch.model_id,
+        "frame_count": ch.frame_count,
+        "cmd_addr": ch.cmd_addr,
+        "status_addr": ch.status_addr,
+        "result_addr": ch.result_addr,
+        "count_addr": ch.count_addr,
+        "time_addr": ch.time_addr,
+        "frame_plan": ch.frame_plan,
+        "result_policy": ch.result_policy,
+        "save_policy": ch.save_policy,
+        "reset_policy": ch.reset_policy,
+        "finalize_delay_ms": getattr(ch, "finalize_delay_ms", 50),
+    }
 
 
 # ==================== 依赖注入 ====================
@@ -339,66 +368,153 @@ async def engine_stop():
     return {"ok": True, "running": engine.running}
 
 
-# ==================== 预设加载 ====================
+# ==================== Presets ====================
 
 class PresetConfig(BaseModel):
-    """Full preset config"""
+    """Full preset config."""
     plc_connections: List[PLCConnectionCreate] = []
     io_mappings: List[IOMappingCreate] = []
     detection_channels: list = []
     multiframe_channels: list = []
     cameras: list = []
+    devices: list = []
+    event_actions: list = []
+    rules: list = []
     strategy: Optional[dict] = None
+
+
+def _preset_file_path(preset_name: str) -> Path:
+    name = preset_name[:-5] if preset_name.endswith(".json") else preset_name
+    if not re.fullmatch(r"[\w.-]+", name):
+        raise HTTPException(400, "Invalid preset name")
+    path = PRESETS_DIR / f"{name}.json"
+    if not path.is_file():
+        raise HTTPException(404, f"Preset [{preset_name}] not found")
+    return path
+
+
+def _preset_summary(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        logger.warning("Preset metadata read failed [%s]: %s", path.name, exc)
+        data = {}
+    return {
+        "id": path.stem,
+        "filename": path.name,
+        "name": data.get("name") or path.stem,
+        "description": data.get("description", ""),
+        "plc_connections": len(data.get("plc_connections", [])),
+        "io_mappings": len(data.get("io_mappings", [])),
+        "detection_channels": len(data.get("detection_channels", [])),
+        "multiframe_channels": len(data.get("multiframe_channels", [])),
+        "cameras": len(data.get("cameras", [])),
+        "devices": len(data.get("devices", [])),
+        "event_actions": len(data.get("event_actions", [])),
+        "rules": len(data.get("rules", [])),
+    }
+
+
+@router.get("/presets")
+async def list_presets():
+    if not PRESETS_DIR.is_dir():
+        return []
+    return [_preset_summary(path) for path in sorted(PRESETS_DIR.glob("*.json"))]
+
+
+@router.get("/presets/{preset_name}")
+async def get_preset(preset_name: str):
+    path = _preset_file_path(preset_name)
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, f"Invalid preset JSON: {exc}")
+
+
+@router.post("/presets/{preset_name}/load")
+async def load_named_preset(preset_name: str):
+    data = await get_preset(preset_name)
+    result = await load_preset(PresetConfig(**data))
+    result["preset"] = preset_name
+    return result
 
 
 @router.post("/preset/load", summary="Load preset config")
 async def load_preset(preset: PresetConfig):
-    from app.core.plc.modbus_client import PLCConnection
-    from app.core.softdevice.xinje import IOMapping
-    from app.core.detection.program_block import DetectionChannel
-    from app.core.detection.multiframe import MultiFrameChannel
     from app.api.detection import _detection_block, _multiframe_block
-    from app.core.camera.manager import camera_manager
+
+    result = await _apply_preset(preset, _get_engine(), _detection_block, _multiframe_block, replace=True)
+    _auto_save()
+    return result
+
+
+@router.get("/preset/save", summary="Export current config as preset JSON")
+async def save_preset():
+    from app.api.detection import _detection_block, _multiframe_block
+
+    return await _collect_current_preset(_get_engine(), _detection_block, _multiframe_block)
+
+
+async def _clear_runtime_config(engine, detection_block, multiframe_block):
     from app.api.model import _strategy_maps
+    from app.core.camera.manager import camera_manager
+    from app.core.device.manager import device_manager
+    from app.core.event_action import event_action_engine
+    from app.core.rule import rule_engine
 
-    engine = _get_engine()
+    for client in list(engine._plc_clients.values()):
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+    engine._plc_clients.clear()
+    engine._io_mappings.clear()
+    if detection_block:
+        detection_block._channels.clear()
+    if multiframe_block:
+        multiframe_block._channels.clear()
+    _strategy_maps.clear()
 
-    # 1. PLC connections
-    for p in preset.plc_connections:
-        conn = PLCConnection(
-            name=p.name, host=p.host, port=p.port,
-            unit_id=p.unit_id, timeout=p.timeout,
-        )
-        engine.add_plc(conn)
+    for camera_id in list(camera_manager.get_all_cameras().keys()):
+        await camera_manager.remove_camera(camera_id)
+    for device_id in list(device_manager.get_all_devices().keys()):
+        await device_manager.remove_device(device_id)
+    await event_action_engine.clear()
+    await rule_engine.clear()
 
-    # 2. I/O mappings
-    for m in preset.io_mappings:
-        mapping = IOMapping(
-            vmodule_addr=m.vmodule_addr,
-            plc_addr=m.plc_addr,
-            plc_name=m.plc_name,
-            description=m.description,
-            enabled=m.enabled if hasattr(m, 'enabled') else True,
-        )
-        engine.add_mapping(mapping)
 
-    # 3. Detection channels (edge-triggered)
+async def _apply_preset(preset: PresetConfig, engine, detection_block, multiframe_block, replace: bool) -> dict:
+    from app.api.model import _strategy_maps
+    from app.core.camera.manager import camera_manager
+    from app.core.detection.multiframe import MultiFrameChannel
+    from app.core.detection.program_block import DetectionChannel
+    from app.core.device.manager import device_manager
+    from app.core.event_action import event_action_engine
+    from app.core.plc.modbus_client import PLCConnection
+    from app.core.rule import rule_engine
+    from app.core.softdevice.xinje import IOMapping
+
+    if replace:
+        await _clear_runtime_config(engine, detection_block, multiframe_block)
+
+    for item in preset.plc_connections:
+        engine.add_plc(PLCConnection(**item.model_dump()))
+
+    for item in preset.io_mappings:
+        engine.add_mapping(IOMapping(**item.model_dump()))
+
     ch_count = 0
-    if _detection_block:
-        for ch_data in preset.detection_channels:
-            ch = DetectionChannel(**ch_data)
-            _detection_block.add_channel(ch)
+    if detection_block:
+        for item in preset.detection_channels:
+            detection_block.add_channel(DetectionChannel(**item))
             ch_count += 1
 
-    # 4. Multi-frame channels (register-polling)
     mf_count = 0
-    if _multiframe_block:
-        for mf_data in preset.multiframe_channels:
-            ch = MultiFrameChannel(**mf_data)
-            _multiframe_block.add_channel(ch)
+    if multiframe_block:
+        for item in preset.multiframe_channels:
+            multiframe_block.add_channel(MultiFrameChannel(**item))
             mf_count += 1
 
-    # 5. Cameras
     cam_count = 0
     for cam in preset.cameras:
         config = {**cam.get("config", {})}
@@ -406,21 +522,22 @@ async def load_preset(preset: PresetConfig):
             config["exposure"] = cam["exposure"]
         if "gain" in cam:
             config["gain"] = cam["gain"]
-        ok = await camera_manager.add_camera(
-            cam.get("camera_id", ""),
-            cam.get("camera_type", "usb"),
-            config,
-        )
-        if ok:
+        if await camera_manager.add_camera(cam.get("camera_id", ""), cam.get("camera_type", "usb"), config):
             cam_count += 1
+            if cam.get("auto_open", False):
+                await camera_manager.open_camera(cam.get("camera_id", ""))
 
-    # 6. Strategy
+    dev_count = 0
+    for dev in preset.devices:
+        if await device_manager.add_device(dev.get("device_id", ""), dev.get("type", "tcp"), dev):
+            dev_count += 1
+
+    await event_action_engine.set_mappings(preset.event_actions)
+    await rule_engine.set_rules(preset.rules)
+
     if preset.strategy and preset.strategy.get("model_id"):
-        mid = preset.strategy["model_id"]
-        smap = preset.strategy.get("strategy_map", {})
-        _strategy_maps[mid] = smap
+        _strategy_maps[preset.strategy["model_id"]] = preset.strategy.get("strategy_map", {})
 
-    _auto_save()
     return {
         "ok": True,
         "plc_connections": len(preset.plc_connections),
@@ -428,189 +545,84 @@ async def load_preset(preset: PresetConfig):
         "detection_channels": ch_count,
         "multiframe_channels": mf_count,
         "cameras": cam_count,
-    }
-
-
-@router.get("/preset/save", summary="导出当前配置为预设 JSON")
-async def save_preset():
-    from app.api.detection import _detection_block, _multiframe_block
-    from app.core.camera.manager import camera_manager
-    from app.api.model import _strategy_maps
-
-    engine = _get_engine()
-
-    plc_connections = [
-        {"name": name, "host": c.config.host, "port": c.config.port,
-         "unit_id": c.config.unit_id, "timeout": c.config.timeout}
-        for name, c in engine._plc_clients.items()
-    ]
-
-    io_mappings = [
-        {"plc_name": m.plc_name, "plc_addr": m.plc_addr,
-         "vmodule_addr": m.vmodule_addr, "description": m.description,
-         "enabled": m.enabled}
-        for m in engine._io_mappings
-    ]
-
-    detection_channels = []
-    if _detection_block:
-        for ch in _detection_block._channels:
-            detection_channels.append({
-                "name": ch.name, "trigger_addr": ch.trigger_addr,
-                "camera_id": ch.camera_id, "model_id": ch.model_id,
-                "busy_addr": ch.busy_addr, "done_addr": ch.done_addr,
-                "result_addr": ch.result_addr,
-                "defect_count_addr": ch.defect_count_addr,
-                "inference_time_addr": ch.inference_time_addr,
-                "total_count_addr": getattr(ch, 'total_count_addr', ''),
-                "ng_count_addr": getattr(ch, 'ng_count_addr', ''),
-                "ok_max_addr": getattr(ch, 'ok_max_addr', ''),
-            })
-
-    multiframe_channels = []
-    if _multiframe_block:
-        for ch in _multiframe_block._channels:
-            multiframe_channels.append({
-                "name": ch.name, "camera_id": ch.camera_id,
-                "model_id": ch.model_id, "frame_count": ch.frame_count,
-                "cmd_addr": ch.cmd_addr, "status_addr": ch.status_addr,
-                "result_addr": ch.result_addr,
-                "count_addr": ch.count_addr, "time_addr": ch.time_addr,
-            })
-
-    cameras = []
-    for vcam in camera_manager.get_all_cameras().values():
-        cameras.append({
-            "camera_id": vcam.camera_id,
-            "camera_type": vcam.camera_type,
-            "config": vcam.config,
-        })
-
-    strategy = None
-    if _strategy_maps:
-        for mid, smap in _strategy_maps.items():
-            strategy = {"model_id": mid, "strategy_map": smap}
-            break
-
-    return {
-        "plc_connections": plc_connections,
-        "io_mappings": io_mappings,
-        "detection_channels": detection_channels,
-        "multiframe_channels": multiframe_channels,
-        "cameras": cameras,
-        "strategy": strategy,
+        "devices": dev_count,
+        "event_actions": len(preset.event_actions),
+        "rules": len(preset.rules),
     }
 
 
 async def _do_load_preset(data: dict, engine, detection_block, multiframe_block):
-    """从 dict 恢复配置（供 persistence restore 调用）"""
-    preset = PresetConfig(**data)
-    from app.core.plc.modbus_client import PLCConnection
-    from app.core.softdevice.xinje import IOMapping
-    from app.core.detection.program_block import DetectionChannel
-    from app.core.detection.multiframe import MultiFrameChannel
-    from app.core.camera.manager import camera_manager
-    from app.api.model import _strategy_maps
-
-    for p in preset.plc_connections:
-        conn = PLCConnection(
-            name=p.name, host=p.host, port=p.port,
-            unit_id=p.unit_id, timeout=p.timeout,
-        )
-        engine.add_plc(conn)
-
-    for m in preset.io_mappings:
-        mapping = IOMapping(
-            vmodule_addr=m.vmodule_addr,
-            plc_addr=m.plc_addr,
-            plc_name=m.plc_name,
-            description=m.description,
-            enabled=m.enabled if hasattr(m, 'enabled') else True,
-        )
-        engine.add_mapping(mapping)
-
-    if detection_block:
-        for ch_data in preset.detection_channels:
-            detection_block.add_channel(DetectionChannel(**ch_data))
-
-    if multiframe_block:
-        for mf_data in preset.multiframe_channels:
-            multiframe_block.add_channel(MultiFrameChannel(**mf_data))
-
-    for cam in preset.cameras:
-        config = {**cam.get("config", {})}
-        if "exposure" in cam:
-            config["exposure"] = cam["exposure"]
-        if "gain" in cam:
-            config["gain"] = cam["gain"]
-        await camera_manager.add_camera(
-            cam.get("camera_id", ""),
-            cam.get("camera_type", "usb"),
-            config,
-        )
-
-    if preset.strategy and preset.strategy.get("model_id"):
-        mid = preset.strategy["model_id"]
-        _strategy_maps[mid] = preset.strategy.get("strategy_map", {})
+    await _apply_preset(PresetConfig(**data), engine, detection_block, multiframe_block, replace=True)
 
 
 async def _collect_current_preset(engine, detection_block, multiframe_block) -> dict:
-    """收集当前配置为 dict（供 persistence auto-save 调用）"""
-    from app.core.camera.manager import camera_manager
     from app.api.model import _strategy_maps
+    from app.core.camera.manager import camera_manager
+    from app.core.device.manager import device_manager
+    from app.core.event_action import event_action_engine
+    from app.core.rule import rule_engine
 
     plc_connections = [
-        {"name": name, "host": c.config.host, "port": c.config.port,
-         "unit_id": c.config.unit_id, "timeout": c.config.timeout}
-        for name, c in engine._plc_clients.items()
+        {
+            "name": name,
+            "host": client.config.host,
+            "port": client.config.port,
+            "unit_id": client.config.unit_id,
+            "timeout": client.config.timeout,
+        }
+        for name, client in engine._plc_clients.items()
     ]
-
     io_mappings = [
-        {"plc_name": m.plc_name, "plc_addr": m.plc_addr,
-         "vmodule_addr": m.vmodule_addr, "description": m.description,
-         "enabled": m.enabled}
-        for m in engine._io_mappings
+        {
+            "plc_name": item.plc_name,
+            "plc_addr": item.plc_addr,
+            "vmodule_addr": item.vmodule_addr,
+            "description": item.description,
+            "enabled": item.enabled,
+        }
+        for item in engine._io_mappings
     ]
-
     detection_channels = []
     if detection_block:
         for ch in detection_block._channels:
             detection_channels.append({
-                "name": ch.name, "trigger_addr": ch.trigger_addr,
-                "camera_id": ch.camera_id, "model_id": ch.model_id,
-                "busy_addr": ch.busy_addr, "done_addr": ch.done_addr,
+                "name": ch.name,
+                "trigger_addr": ch.trigger_addr,
+                "camera_id": ch.camera_id,
+                "model_id": ch.model_id,
+                "busy_addr": ch.busy_addr,
+                "done_addr": ch.done_addr,
                 "result_addr": ch.result_addr,
                 "defect_count_addr": ch.defect_count_addr,
                 "inference_time_addr": ch.inference_time_addr,
-                "total_count_addr": getattr(ch, 'total_count_addr', ''),
-                "ng_count_addr": getattr(ch, 'ng_count_addr', ''),
-                "ok_max_addr": getattr(ch, 'ok_max_addr', ''),
+                "total_count_addr": getattr(ch, "total_count_addr", ""),
+                "ng_count_addr": getattr(ch, "ng_count_addr", ""),
+                "ok_max_addr": getattr(ch, "ok_max_addr", ""),
+                "ack_base": getattr(ch, "ack_base", 16),
+                "error_code": getattr(ch, "error_code", 255),
+                "result_codes": getattr(ch, "result_codes", {}),
+                "defect_priority": getattr(ch, "defect_priority", []),
+                "defect_code_map": getattr(ch, "defect_code_map", {}),
+                "inference": getattr(ch, "inference", {}),
             })
-
     multiframe_channels = []
     if multiframe_block:
         for ch in multiframe_block._channels:
-            multiframe_channels.append({
-                "name": ch.name, "camera_id": ch.camera_id,
-                "model_id": ch.model_id, "frame_count": ch.frame_count,
-                "cmd_addr": ch.cmd_addr, "status_addr": ch.status_addr,
-                "result_addr": ch.result_addr,
-                "count_addr": ch.count_addr, "time_addr": ch.time_addr,
-            })
-
-    cameras = []
-    for vcam in camera_manager.get_all_cameras().values():
-        cameras.append({
-            "camera_id": vcam.camera_id,
-            "camera_type": vcam.camera_type,
-            "config": vcam.config,
-        })
-
+            multiframe_channels.append(_serialize_multiframe_channel(ch))
+    cameras = [
+        {
+            "camera_id": cam.camera_id,
+            "camera_type": cam.camera_type,
+            "config": cam.config,
+            "auto_open": cam.config.get("auto_open", False),
+        }
+        for cam in camera_manager.get_all_cameras().values()
+    ]
+    devices = [dev.get_info() for dev in device_manager.get_all_devices().values()]
     strategy = None
     if _strategy_maps:
-        for mid, smap in _strategy_maps.items():
-            strategy = {"model_id": mid, "strategy_map": smap}
-            break
+        model_id, strategy_map = next(iter(_strategy_maps.items()))
+        strategy = {"model_id": model_id, "strategy_map": strategy_map}
 
     return {
         "plc_connections": plc_connections,
@@ -618,10 +630,11 @@ async def _collect_current_preset(engine, detection_block, multiframe_block) -> 
         "detection_channels": detection_channels,
         "multiframe_channels": multiframe_channels,
         "cameras": cameras,
+        "devices": devices,
+        "event_actions": event_action_engine.list_mappings(),
+        "rules": rule_engine.get_all_rules(),
         "strategy": strategy,
     }
-    target_cycle_ms: int = Field(default=20, ge=5, le=1000)
-    modbus_timeout: float = Field(default=1.0, ge=0.1, le=10.0)
 
 
 @router.put("/engine/config", summary="更新引擎运行时配置")

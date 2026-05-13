@@ -87,6 +87,7 @@ class IOBatch:
     @staticmethod
     def optimize_ranges(
         mappings: List[IOMapping],
+        max_gap: int = 63,
     ) -> List[Tuple]:
         """将离散地址优化为连续范围
 
@@ -106,7 +107,7 @@ class IOBatch:
         for m in sorted_maps[1:]:
             addr = m.get_modbus_address()
             offset = addr - range_start
-            if offset < 64:  # 间距小于 64，合并
+            if offset <= max_gap:
                 range_items.append((m, offset))
             else:
                 # 新范围
@@ -320,7 +321,7 @@ class ScanEngine:
             # EY → 批量写线圈
             coils = type_groups.get("coil", [])
             if coils:
-                for start, count, items in IOBatch.optimize_ranges(coils):
+                for start, count, items in IOBatch.optimize_ranges(coils, max_gap=0):
                     try:
                         # 构建完整的连续值数组
                         values = [False] * count
@@ -336,7 +337,7 @@ class ScanEngine:
             # EW → 批量写寄存器
             regs = type_groups.get("register", [])
             if regs:
-                for start, count, items in IOBatch.optimize_ranges(regs):
+                for start, count, items in IOBatch.optimize_ranges(regs, max_gap=0):
                     try:
                         values = [0] * count
                         for m, offset in items:

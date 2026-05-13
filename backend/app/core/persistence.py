@@ -92,6 +92,20 @@ async def restore_config() -> Optional[dict]:
     return data
 
 
+async def restore_runtime_settings():
+    """启动时恢复需要立即影响运行时的系统设置"""
+    from app.config import settings
+    try:
+        save_ok_images = await get_setting("save_ok_images")
+        save_ng_images = await get_setting("save_ng_images")
+        if save_ok_images is not None:
+            settings.SAVE_OK_IMAGES = bool(save_ok_images)
+        if save_ng_images is not None:
+            settings.SAVE_NG_IMAGES = bool(save_ng_images)
+    except Exception as e:
+        logger.error(f"恢复运行时设置失败: {e}")
+
+
 async def save_detection_record(
     channel_name: str,
     camera_id: str,

@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -54,6 +54,28 @@ async def list_weights():
                 "size_mb": round(f.stat().st_size / 1024 / 1024, 1),
             })
     return files
+
+
+@router.post("/upload", summary="Upload model weight file")
+async def upload_model(
+    request: Request,
+    filename: str = Query(..., description="Target weight filename"),
+):
+    suffix = os.path.splitext(filename or "")[1].lower()
+    if suffix not in (".pt", ".onnx", ".engine", ".pth"):
+        raise HTTPException(400, "Only .pt/.onnx/.engine/.pth model files are supported")
+
+    settings.WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+    save_path = settings.WEIGHTS_DIR / os.path.basename(filename)
+    with open(save_path, "wb") as f:
+        async for chunk in request.stream():
+            f.write(chunk)
+
+    return {
+        "ok": True,
+        "filename": save_path.name,
+        "size_mb": round(save_path.stat().st_size / 1024 / 1024, 1),
+    }
 
 
 @router.post("/load", summary="Load model")

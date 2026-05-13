@@ -1,98 +1,66 @@
-"""
-视觉检测程序块 — VModule 的核心逻辑
-
-这是一个 ProgramBlock（插入扫描引擎的异步回调），实现:
-  EX 上升沿触发 → 相机拍照 → 模型推理 → 结果写入 EY/EW
-
-配置语言完全基于 PLC 软元件地址，例如:
-  - VM0 = 相机 ID (0=相机1, 1=相机2, ...)
-  - VM1 = 模型 ID (0=模型1, 1=模型2, ...)
-  - EX0 上升沿 = 触发检测
-  - EY0 = 检测完成（脉冲）
-  - EY1 = OK/NG 结果 (1=OK, 0=NG)
-  - EW0 = 缺陷数量
-  - EW1 = 推理耗时 (ms)
-
-设计目标: PLC 工程师零学习成本
-"""
+"""Single-frame PLC-triggered inspection program block."""
 
 from __future__ import annotations
+
 import asyncio
-import time
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from app.core.softdevice.memory import SoftDeviceMemory, SoftDeviceAddress
 from app.core.image_store import save_detection_image
 from app.core.persistence import save_detection_record
+from app.core.softdevice.memory import SoftDeviceAddress, SoftDeviceMemory
 
 logger = logging.getLogger("vmodule.detection")
+
+WORD_PREFIXES = ("EW", "ED", "VW", "VD", "SD", "SW", "D", "W")
+DEFAULT_DEFECT_PRIORITY = ["NG", "HP_NG", "QJ_NG", "RJ_NG", "LX_NG"]
+DEFAULT_DEFECT_CODE_MAP = {
+    "NG": "ng_fatal",
+    "HP_NG": "ng_repairable",
+    "QJ_NG": "ng_repairable",
+    "RJ_NG": "ng_repairable",
+    "LX_NG": "ng_repairable",
+}
+DEFAULT_RESULT_CODES = {"ok": 7, "ng_repairable": 6, "ng_fatal": 5}
 
 
 @dataclass
 class DetectionChannel:
-    """单路检测通道配置
+    """Single inspection channel bound to PLC soft-device addresses."""
 
-    每个通道独立绑定:
-      - 一个触发地址 (EX)
-      - 一个相机
-      - 一个模型
-      - 一组输出地址 (EY/EW)
-
-    PLC 工程师只需配置这些软元件地址即可完成检测流程。
-    """
     name: str = ""
+    trigger_addr: str = "EX0"
+    busy_addr: str = "VM100"
+    camera_id: str = ""
+    model_id: str = ""
 
-    # 触发
-    trigger_addr: str = "EX0"       # 触发信号（上升沿检测）
-    busy_addr: str = "VM100"        # 忙碌标志（检测中=1）
+    conf_threshold_addr: str = ""
+    ok_min_addr: str = ""
+    ok_max_addr: str = ""
 
-    # 相机 & 模型
-    camera_id: str = ""             # 相机名称
-    model_id: str = ""              # 模型名称
+    done_addr: str = "EY0"
+    result_addr: str = "EY1"
+    defect_count_addr: str = "EW0"
+    inference_time_addr: str = "EW1"
+    total_count_addr: str = "VD0"
+    ng_count_addr: str = "VD1"
 
-    # 检测参数（通过 VD ���置）
-    conf_threshold_addr: str = ""   # 置信度阈值 (×1000, 如 VD100=500 表示 0.5)
-    ok_min_addr: str = ""           # OK 最小缺陷数 (默认 0)
-    ok_max_addr: str = ""           # OK 最大缺陷数 (默认 0，即无缺陷=OK)
+    ack_base: int = 16
+    error_code: int = 255
+    result_codes: Dict[str, int] = field(default_factory=lambda: dict(DEFAULT_RESULT_CODES))
+    defect_priority: List[str] = field(default_factory=lambda: list(DEFAULT_DEFECT_PRIORITY))
+    defect_code_map: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_DEFECT_CODE_MAP))
+    inference: Dict[str, Any] = field(default_factory=dict)
 
-    # 输出
-    done_addr: str = "EY0"          # 检测完成（单次脉冲）
-    result_addr: str = "EY1"        # OK=1, NG=0
-    defect_count_addr: str = "EW0"  # 缺陷数量
-    inference_time_addr: str = "EW1"  # 推理耗时 (ms)
-    total_count_addr: str = "VD0"   # 累计检测次数
-    ng_count_addr: str = "VD1"      # 累计 NG 次数
-
-    # 运行时状态（非配置项）
     _pending_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
 
 class DetectionProgramBlock:
-    """视觉检测程序块
-
-    作为 ProgramBlock 注册到 ScanEngine，每个扫描周期被调用一次。
-
-    工作流程:
-      1. 检查每个通道的触发地址是否有上升沿
-      2. 如果触发且不忙碌，启动异步检测任务
-      3. 检测任务完成后，写入结果到输出地址
-      4. 设置完成脉冲（下个扫描周期自动清除）
-
-    用法:
-        block = DetectionProgramBlock(camera_manager, inference_manager)
-        block.add_channel(DetectionChannel(
-            trigger_addr="EX0",
-            camera_id="cam1",
-            model_id="yolo_default",
-            done_addr="EY0",
-            result_addr="EY1",
-        ))
-        scan_engine.add_program(block)
-    """
+    """PLC scan callback for single-frame visual inspection."""
 
     def __init__(self, camera_manager=None, inference_manager=None):
         self._camera_mgr = camera_manager
@@ -100,72 +68,60 @@ class DetectionProgramBlock:
         self._channels: List[DetectionChannel] = []
 
     def add_channel(self, channel: DetectionChannel):
-        """添加检测通道"""
         self._channels.append(channel)
         logger.info(
-            f"检测通道 [{channel.name or channel.trigger_addr}]: "
-            f"触发={channel.trigger_addr} 相机={channel.camera_id} "
-            f"模型={channel.model_id} → {channel.done_addr}/{channel.result_addr}"
+            "Detection channel [%s]: trigger=%s camera=%s model=%s -> %s/%s",
+            channel.name or channel.trigger_addr,
+            channel.trigger_addr,
+            channel.camera_id,
+            channel.model_id,
+            channel.done_addr,
+            channel.result_addr,
         )
 
     async def __call__(self, memory: SoftDeviceMemory):
-        """扫描周期回调 — 每个周期被 ScanEngine 调用一次"""
         for ch in self._channels:
             await self._process_channel(memory, ch)
 
     async def _process_channel(self, memory: SoftDeviceMemory, ch: DetectionChannel):
-        """处理单个检测通道"""
-
-        # 清除上次的完成脉冲
         try:
             if memory.read_bit(SoftDeviceAddress.parse(ch.done_addr)):
                 memory.write_bit(SoftDeviceAddress.parse(ch.done_addr), False)
         except Exception:
             pass
 
-        # 检查触发上升沿
         trigger = SoftDeviceAddress.parse(ch.trigger_addr)
         if not memory.rising_edge(trigger):
             return
 
-        # 检查是否忙碌
         busy = SoftDeviceAddress.parse(ch.busy_addr)
         if memory.read_bit(busy):
-            logger.debug(f"通道 [{ch.name}] 忙碌中，跳过触发")
+            logger.debug("Channel [%s] is busy; trigger skipped", ch.name)
             return
 
-        # 设置忙碌
         memory.write_bit(busy, True)
-        logger.info(f"通道 [{ch.name}] 触发检测")
-
-        # 启动异步检测（不阻塞扫描周期）
-        ch._pending_task = asyncio.create_task(
-            self._run_detection(memory, ch)
-        )
+        logger.info("Channel [%s] triggered", ch.name)
+        ch._pending_task = asyncio.create_task(self._run_detection(memory, ch))
 
     async def _run_detection(self, memory: SoftDeviceMemory, ch: DetectionChannel):
-        """执行完整的检测流程（异步）"""
         busy = SoftDeviceAddress.parse(ch.busy_addr)
         start_time = time.perf_counter()
 
         try:
-            # ① 相机拍照
             image = await self._capture(ch)
             if image is None:
-                logger.error(f"通道 [{ch.name}] 拍照失败")
-                self._write_result(memory, ch, ok=False, defects=0, time_ms=0)
+                logger.error("Channel [%s] capture failed", ch.name)
+                self._write_result(memory, ch, ok=False, defects=0, time_ms=0, detections=[], result_level="error")
                 return
 
-            # ② 模型推理
+            self._write_response(memory, ch, int(ch.ack_base), ok=True)
+
             result = await self._predict(ch, image)
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-
-            # ③ 判定 OK/NG
             detections = result.get("detections", []) if result else []
             defect_count = len(detections)
 
-            # 读取阈值配置
-            ok_max = 0  # 默认: 0 个缺陷 = OK
+            ok_max = 0
             if ch.ok_max_addr:
                 try:
                     ok_max = memory.read_word(SoftDeviceAddress.parse(ch.ok_max_addr))
@@ -173,18 +129,18 @@ class DetectionProgramBlock:
                     pass
 
             is_ok = defect_count <= ok_max
-
-            # ④ 写入结果
-            self._write_result(memory, ch, ok=is_ok, defects=defect_count, time_ms=elapsed_ms)
+            level = "ok" if is_ok else self._classify_defects(ch, detections)
+            self._write_result(memory, ch, ok=is_ok, defects=defect_count, time_ms=elapsed_ms, detections=detections, result_level=level)
 
             logger.info(
-                f"通道 [{ch.name}] 检测完成: "
-                f"{'OK' if is_ok else 'NG'} | "
-                f"缺陷={defect_count} | "
-                f"耗时={elapsed_ms}ms"
+                "Channel [%s] done: %s defects=%s elapsed=%sms level=%s",
+                ch.name,
+                "OK" if is_ok else "NG",
+                defect_count,
+                elapsed_ms,
+                level,
             )
 
-            # ⑤ 图片存储 + 检测记录（不阻塞）
             image_path = await save_detection_image(ch.camera_id, image, is_ok)
             asyncio.create_task(save_detection_record(
                 channel_name=ch.name,
@@ -198,10 +154,9 @@ class DetectionProgramBlock:
             ))
 
         except Exception as e:
-            logger.error(f"通道 [{ch.name}] 检测异常: {e}")
-            self._write_result(memory, ch, ok=False, defects=0, time_ms=0)
+            logger.error("Channel [%s] detection error: %s", ch.name, e)
+            self._write_result(memory, ch, ok=False, defects=0, time_ms=0, detections=[], result_level="error")
         finally:
-            # 释放忙碌
             memory.write_bit(busy, False)
 
     def _write_result(
@@ -211,20 +166,18 @@ class DetectionProgramBlock:
         ok: bool,
         defects: int,
         time_ms: int,
+        detections: List[dict[str, Any]],
+        result_level: str,
     ):
-        """将检测结果写入软元件"""
         try:
-            # 完成脉冲
             memory.write_bit(SoftDeviceAddress.parse(ch.done_addr), True)
-            # OK/NG
-            memory.write_bit(SoftDeviceAddress.parse(ch.result_addr), ok)
-            # 缺陷数
+            result_code = self._result_code(ch, result_level, ok)
+            self._write_response(memory, ch, result_code, ok=ok)
+
             if ch.defect_count_addr:
                 memory.write_word(SoftDeviceAddress.parse(ch.defect_count_addr), defects)
-            # 推理耗时
             if ch.inference_time_addr:
                 memory.write_word(SoftDeviceAddress.parse(ch.inference_time_addr), time_ms)
-            # 累计计数
             if ch.total_count_addr:
                 addr = SoftDeviceAddress.parse(ch.total_count_addr)
                 memory.write_word(addr, memory.read_word(addr) + 1)
@@ -232,29 +185,72 @@ class DetectionProgramBlock:
                 addr = SoftDeviceAddress.parse(ch.ng_count_addr)
                 memory.write_word(addr, memory.read_word(addr) + 1)
         except Exception as e:
-            logger.error(f"写入结果异常: {e}")
+            logger.error("Write detection result failed: %s", e)
+
+    def _write_response(self, memory: SoftDeviceMemory, ch: DetectionChannel, value: int, ok: bool):
+        if not ch.result_addr:
+            return
+        addr = SoftDeviceAddress.parse(ch.result_addr)
+        if self._is_word_address(ch.result_addr):
+            memory.write_word(addr, int(value))
+        else:
+            memory.write_bit(addr, bool(ok))
+
+    def _result_code(self, ch: DetectionChannel, level: str, ok: bool) -> int:
+        codes = {**DEFAULT_RESULT_CODES, **dict(ch.result_codes or {})}
+        if level == "error":
+            return int(ch.error_code)
+        if ok:
+            return int(codes.get("ok", 7))
+        return int(codes.get(level, codes.get("ng_fatal", 5)))
+
+    def _classify_defects(self, ch: DetectionChannel, detections: List[dict[str, Any]]) -> str:
+        classes = {str(d.get("class", d.get("label", ""))) for d in detections}
+        for defect in ch.defect_priority or DEFAULT_DEFECT_PRIORITY:
+            if defect in classes:
+                return (ch.defect_code_map or DEFAULT_DEFECT_CODE_MAP).get(defect, "ng_fatal")
+        return "ng_fatal"
+
+    def _is_word_address(self, address: str) -> bool:
+        return address.upper().startswith(WORD_PREFIXES)
 
     async def _capture(self, ch: DetectionChannel) -> Optional[np.ndarray]:
-        """相机拍照"""
         if self._camera_mgr is None:
-            logger.warning("相机管理器未初始化，使用测试图像")
-            # 返回测试图像用于开发调试
+            logger.warning("Camera manager is not initialized; using test image")
             return np.zeros((480, 640, 3), dtype=np.uint8)
 
         try:
             return await self._camera_mgr.capture(ch.camera_id)
         except Exception as e:
-            logger.error(f"相机 [{ch.camera_id}] 拍照失败: {e}")
+            logger.error("Camera [%s] capture failed: %s", ch.camera_id, e)
             return None
 
     async def _predict(self, ch: DetectionChannel, image: np.ndarray) -> Optional[dict]:
-        """模型推理"""
         if self._inference_mgr is None:
-            logger.warning("推理管理器未初始化，返回空结果")
+            logger.warning("Inference manager is not initialized; returning empty result")
             return {"detections": [], "inference_time": 0}
 
+        kwargs = self._inference_kwargs(ch)
         try:
-            return await self._inference_mgr.predict(ch.model_id, image)
+            return await self._inference_mgr.predict(ch.model_id, image, **kwargs)
         except Exception as e:
-            logger.error(f"模型 [{ch.model_id}] 推理失败: {e}")
+            logger.error("Model [%s] predict failed: %s", ch.model_id, e)
             return None
+
+    def _inference_kwargs(self, ch: DetectionChannel) -> dict[str, Any]:
+        raw = ch.inference or {}
+        mapping = {
+            "inference_size": "imgsz",
+            "imgsz": "imgsz",
+            "conf_threshold": "conf",
+            "conf": "conf",
+            "iou_threshold": "iou",
+            "iou": "iou",
+            "max_det": "max_det",
+            "augment": "augment",
+        }
+        kwargs = {}
+        for src, dst in mapping.items():
+            if src in raw and raw[src] is not None:
+                kwargs[dst] = raw[src]
+        return kwargs

@@ -32,6 +32,7 @@ from app.core.plc.modbus_client import (
 )
 from app.core.scanner.engine import ScanEngine, ScannerConfig, IOBatch
 from app.core.detection.program_block import DetectionProgramBlock, DetectionChannel
+from app.core.detection.multiframe import MultiFrameProgramBlock, MultiFrameChannel
 
 
 # ============================================================
@@ -596,7 +597,136 @@ class TestDetectionProgramBlock:
 
 
 # ============================================================
-# 11. 集成冒烟测试
+# 11. MultiFrameProgramBlock
+# ============================================================
+
+class TestMultiFrameProgramBlock:
+    @pytest.mark.asyncio
+    async def test_two_frame_register_handshake_and_final_result(self):
+        mem = SoftDeviceMemory()
+        block = MultiFrameProgramBlock()
+        ch = MultiFrameChannel(
+            name="cam1_baseline",
+            camera_id="usb_cam1",
+            cmd_addr="ED0",
+            status_addr="EW0",
+            count_addr="VD10",
+            time_addr="VD11",
+            frame_plan=[
+                {"command": 1, "model_id": "", "status_code": 11},
+                {"command": 2, "model_id": "", "status_code": 12},
+            ],
+            finalize_delay_ms=1,
+            save_policy={"mode": "off"},
+        )
+        block.add_channel(ch)
+
+        mem.write("ED0", 1)
+        await block(mem)
+        assert ch._pending_task is not None
+        await ch._pending_task
+        assert mem.read("EW0") == 11
+        assert ch._cycle_id
+        assert set(ch._frames.keys()) == {1}
+
+        mem.write("ED0", 0)
+        await block(mem)
+        assert ch._cycle_id
+
+        mem.write("ED0", 2)
+        await block(mem)
+        assert ch._pending_task is not None
+        await ch._pending_task
+        assert mem.read("EW0") == 12
+        assert ch._pending_finalize is True
+
+        await asyncio.sleep(0.01)
+        await block(mem)
+        assert ch._pending_task is not None
+        await ch._pending_task
+        assert mem.read("EW0") == 7
+        assert mem.read("VD10") == 0
+        assert ch._awaiting_reset is True
+
+        mem.write("ED0", 0)
+        await block(mem)
+        assert ch._cycle_id == ""
+        assert ch._frames == {}
+
+    @pytest.mark.asyncio
+    async def test_visflowz_priority_aggregation(self):
+        class FakeInference:
+            async def predict(self, model_id, image):
+                if model_id == "repairable":
+                    return {"detections": [{"class": "YW", "confidence": 0.9}], "inference_time": 1}
+                return {"detections": [{"class": "JS", "confidence": 0.9}], "inference_time": 1}
+
+        mem = SoftDeviceMemory()
+        block = MultiFrameProgramBlock(inference_manager=FakeInference())
+        ch = MultiFrameChannel(
+            name="priority",
+            cmd_addr="ED0",
+            status_addr="EW0",
+            frame_plan=[
+                {"command": 1, "model_id": "repairable", "status_code": 11},
+                {"command": 2, "model_id": "fatal", "status_code": 12},
+            ],
+            finalize_delay_ms=0,
+            save_policy={"mode": "off"},
+        )
+        block.add_channel(ch)
+
+        mem.write("ED0", 1)
+        await block(mem)
+        await ch._pending_task
+        mem.write("ED0", 0)
+        await block(mem)
+        mem.write("ED0", 2)
+        await block(mem)
+        await ch._pending_task
+        await block(mem)
+        await ch._pending_task
+
+        assert mem.read("EW0") == 5
+
+    @pytest.mark.asyncio
+    async def test_two_channels_can_run_independently(self):
+        mem = SoftDeviceMemory()
+        block = MultiFrameProgramBlock()
+        cam1 = MultiFrameChannel(
+            name="cam1",
+            cmd_addr="ED0",
+            status_addr="EW0",
+            frame_plan=[{"command": 1, "status_code": 11}],
+            finalize_delay_ms=0,
+            save_policy={"mode": "off"},
+        )
+        cam2 = MultiFrameChannel(
+            name="cam2",
+            cmd_addr="ED2",
+            status_addr="EW2",
+            frame_plan=[{"command": 1, "status_code": 11}],
+            finalize_delay_ms=0,
+            save_policy={"mode": "off"},
+        )
+        block.add_channel(cam1)
+        block.add_channel(cam2)
+
+        mem.write("ED0", 1)
+        mem.write("ED2", 1)
+        await block(mem)
+        assert cam1._pending_task is not None
+        assert cam2._pending_task is not None
+        await asyncio.gather(cam1._pending_task, cam2._pending_task)
+
+        assert mem.read("EW0") == 11
+        assert mem.read("EW2") == 11
+        assert cam1._pending_finalize is True
+        assert cam2._pending_finalize is True
+
+
+# ============================================================
+# 12. 集成冒烟测试
 # ============================================================
 
 class TestIntegration:
